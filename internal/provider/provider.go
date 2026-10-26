@@ -35,7 +35,7 @@
 // schedule and from the error recipients (a schedule left with none is
 // disabled) and deletes channels/<id>/. Recipients pointing at a channel
 // that doesn't exist (hand-edited config) are skipped at run time with
-// recipient.channel_missing (pipeline, milestone 6).
+// recipient.channel_missing (internal/pipeline).
 //
 // Future providers (not now): Telegram (bot token, sendDocument, chat ids),
 // ntfy (server URL + topic, optional token, attachments via PUT).

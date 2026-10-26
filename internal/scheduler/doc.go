@@ -61,7 +61,7 @@
 //     schedule never overlaps itself: a slot that comes while its previous
 //     run is still going is skipped (slot.overlap). Serializing the sends of
 //     one channel across schedules (pauses between sends) belongs to the
-//     pipeline (milestone 6), not here.
+//     channel manager (provider.Manager.Send), not here.
 //   - Disabled schedules and invalid cadences are ignored. Reload takes the
 //     whole schedule list after any config change: an unchanged cadence keeps
 //     its position, a new or edited one starts from now (no back-firing).

@@ -6,7 +6,7 @@ instead of re-reading the whole repo. What the app does, as the user sees it, is
 every error code the user can see is in [ERRORS.md](ERRORS.md).
 
 **Temporary: `REFERENCE.md`** (local, git-ignored, never committed) holds the detailed design rules of the
-packages not written yet (resolver, processors, pipeline, notify, update).
+packages not written yet (the `xlsx-sheets` processor, update).
 Read the section of the package you're implementing. When the package lands, move its section
 into the package doc comment (and its tests), delete it from `REFERENCE.md`, and delete the file once it's
 empty.
@@ -71,8 +71,13 @@ infeasible (e.g. a Wails 3 tray limitation), propose the alternative and ask bef
   Tests use fakes (`provider/fake`, fake clock) and fixtures; live checks are read-only.
   When running the app locally for a check, start from an empty data directory (`WCHRON_DATA_DIR` in
   `.env`) unless told otherwise, and stop it afterwards. In this project these act for real:
-  - every `Channel.Send`, on any provider: scheduled runs (`pipeline.Run`), the "send now" button, the
-    reports to the error recipients (`notify`);
+  - every `Channel.Send`, on any provider, always through `provider.Manager.Send`: scheduled runs
+    (`pipeline.Run`), "send now" (`SendNow` → `Scheduler.RunNow`), the reports and "works again" notices to
+    the error recipients (`notify`); the check of an unverified recipient right before a send
+    (`Manager.VerifyRecipient`, it also writes `verified` to `config.json`);
+  - desktop toasts (`internal/toast`, Wails notifications service: its startup writes the toast
+    registration under `HKCU\Software\Classes` (AppUserModelId `wchron`, activator CLSID)); tests use a
+    fake `notify.Toaster`, never a real toast;
   - channel setup: WhatsApp QR pairing, re-pair and logout (they create or remove a linked device on the
     account); later, any provider login;
   - `ValidateTarget` / `ListTargets` (read-only, but they hit the service: only with a test channel), and the
@@ -226,7 +231,9 @@ i18n lives in one shared catalog used by both Go and the frontend.
   tested with `provider/fake`.
 - Required coverage: token engine (Italian names, offsets, escaping), scheduler (fake clock: interval,
   fixed times, window, days, jitter, skipped slots, DST both ways), Excel processor (fixture workbooks:
-  formulas, missing sheet, locked file, no cached values), config/state migrations.
+  formulas, missing sheet, locked file, no cached values), config/state migrations, pipeline (provider/fake +
+  real Manager, fake clock, injected pauses: order, parallel channels, captions, skips, slot.late,
+  cancellation, temp cleanup) and notify (fake toaster: repeat dedup, "works again", error recipients).
 - Fixture workbooks are synthetic (generated or hand-made), never copies of real user files. Before
   committing anything taken from a real response, replace names, phone numbers, JIDs and any token.
 - End-to-end checks: the frontend runs in Playwright against a fake backend (`frontend/e2e/mock`), no
@@ -294,8 +301,12 @@ i18n lives in one shared catalog used by both Go and the frontend.
 ## Adding a processor
 
 1. Create `internal/processor/<name>/` implementing `processor.Processor` (`Type`, `OptionsSchema`,
-   `Validate`, `Process`). `Process` works on a temp copy and returns a cleanup func.
-2. Register it in `internal/processor/registry.go`. The GUI renders its options from `OptionsSchema`.
+   `Validate`, `Process`). `Process` works on a temp copy in `Env.TmpDir` (start from
+   `passthrough.Copy`, which reads the original with a shared open) and returns a cleanup func; warnings
+   go in `Output.Warnings` (and their codes in `pipeline`'s `warnings` set).
+2. Register it in `main.go` (`processor.NewRegistry(passthrough.New(), …)`): the only place naming the
+   processors (`internal/processor` can't import its sub-packages: import cycle). The GUI renders its
+   options from `OptionsSchema`.
 3. Add its error codes to `internal/apperr`, `ERRORS.md` and both catalogs; labels for its options go in
    `locales/*.json` under `ui.processor.<name>.*`.
 4. Tests with synthetic fixtures in `internal/processor/<name>/testdata`.
@@ -351,5 +362,17 @@ i18n lives in one shared catalog used by both Go and the frontend.
   globals in whatsmeow's `store` (`setDeviceInfo`, set once).
 - Two processes on the same WhatsApp session (e.g. `make smoke` while `make dev` runs, or a copied data dir)
   get `StreamReplaced`: the channel stops (`wa.stream_replaced`) instead of fighting back.
+- Never call `Channel.Send` directly: `provider.Manager.Send` holds the per-channel lane (one send at a time,
+  2–5 s pause, shared by every schedule and by `notify`). Tests inject `Options.SendPause`/`Options.Sleep`
+  so they don't wait.
+- The Wails notifications service is started by hand (`toast.Start` on the main thread via
+  `application.InvokeSync`), not registered as a Wails service: a registered service whose startup fails
+  stops the whole app. It needs `git.sr.ht/~jackmordaunt/go-toast/v2` (Wails' own dependency, in `go.sum`).
+- `processor.Process`'s cleanup and the run's temp dir are always removed by the pipeline; never write a
+  processed copy outside `Env.TmpDir`.
+- The glob in file names is the resolver's own (`*`, `?`, case-insensitive), not `filepath.Match`:
+  `[` is common in real file names.
+- In `node -e "…"` edit scripts run from Git Bash, backticks in Go struct tags become command
+  substitutions: write the script to a file (scratchpad) instead.
 - On Windows the channel's `session.db` must be closed (`Channel.Close`) before `channels/<id>/` can be
   deleted: the manager closes first, then removes the dir.

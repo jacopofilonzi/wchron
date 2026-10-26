@@ -18,7 +18,7 @@ linked like WhatsApp Web. You can connect several accounts (channels), also of t
 ## What it does and doesn't do
 
 - Sends files on a schedule to one or more recipients per schedule, one file after the other with a short
-  pause, with an optional caption.
+  pause (2–5 s), with an optional caption.
 - Never sends error messages to the recipients: problems are shown as desktop notifications and,
   optionally, sent to one or more "error recipients" (for example your own WhatsApp number).
 - Doesn't read or answer messages, doesn't send in bulk, doesn't embed WhatsApp Web.
@@ -95,6 +95,28 @@ recipient is saved as **not verified** and checked automatically the next time t
 that fails the check (no WhatsApp account, group left) is marked and never receives anything until you fix it.
 
 **Deleting** a schedule or a channel is permanent: wchron asks you to confirm first.
+
+### What happens at a run
+
+1. Every file of the schedule is found (dates in the name are computed for the scheduled time, not for the
+   moment the send actually starts) and copied once to a temporary folder (`%TEMP%\wchron`): your
+   files are never modified, and a file that is being written at that moment is sent as it is at that
+   moment (wchron doesn't wait for it). The copies are deleted at the end, also when something fails.
+2. If, right before the first send, more than 5 minutes have passed since the scheduled time, the run is
+   skipped.
+3. Each recipient gets all the files, in order, one after the other. Recipients on different channels
+   are served at the same time; on the same channel one message at a time, with a random pause of 2 to 5
+   seconds between two messages (also between different schedules sending on that channel).
+4. A recipient not verified yet is checked right before its first file (if its channel is connected);
+   one that fails the check is skipped and marked. A file larger than the channel allows, or a caption too
+   long for it, is skipped for that recipient only. A recipient whose channel is not connected is skipped.
+
+**Captions**: the schedule caption goes on the first file each recipient receives; the other files go
+without a caption, unless a file has its own caption, which it always carries (an empty one too).
+
+**Send now** runs a schedule immediately, whatever its days, time window or tolerance (not while that
+schedule is already sending). Its problems show only as a desktop notification, never as a message to the
+error recipients.
 
 ## Files and dates in names
 
@@ -177,8 +199,13 @@ If a template is wrong, the editor tells you what and where (the character posit
 
 ### Wildcards
 
+In the file name (never in the folders) `*` stands for any text and `?` for one character, e.g.
+`C:\Reports\vendite_*.pdf`; upper and lower case don't matter, and `[` `]` are ordinary characters. Paths
+must be full (`C:\…` or `\\server\share\…`).
+
 If a wildcard matches several files, by default nothing is sent and you get a notification; for each file
-you can choose to send the newest match or all matches instead.
+you can choose to send the newest match (latest modified) or all matches (in name order) instead. If
+nothing matches, that file is skipped and tried again at the next run.
 
 ### Excel: send only some sheets
 
@@ -199,6 +226,13 @@ files and recipients still get theirs, and at the end one desktop notification (
 error recipient) lists the problems. The next scheduled run simply tries again. Every problem
 has a code; [ERRORS.md](ERRORS.md) lists them all.
 
+Notifications are not repeated at every run: the first failure of a schedule is reported at once; while
+the same problems persist they are reported again at most every 6 hours; different problems are reported
+at once. When the schedule works again after a reported failure, a "works again" notice is sent the same
+way. A run that goes fine sends no notification: its result is in the Status page and the tray. Clicking a
+notification opens the Status page. If the message to an error recipient can't be sent, a second desktop
+notification says so.
+
 If a channel disconnects, the tray icon shows it and wchron reconnects by itself; if a WhatsApp linked device was
 removed, the window asks you to scan the QR again.
 
@@ -211,7 +245,8 @@ removed, the window asks you to scan the QR again.
   14:00", with the day when it's not today), quit.
 
 The icon shows whether the routine is active, paused, sending, in error or with a channel disconnected,
-and whether keep awake is on.
+and whether keep awake is on. The error state stays until the failing schedule works again or you open
+the Status page.
 
 ## Updates
 

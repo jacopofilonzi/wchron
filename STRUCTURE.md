@@ -6,9 +6,9 @@ one or more channels. Delivery goes through provider plug-ins: WhatsApp (whatsme
 Telegram/ntfy possible later without structural changes. One Go process holds the core (scheduler,
 pipeline, channels, state); the Svelte GUI in a Wails window talks to it through generated bindings and events.
 
-> Status: milestones 1 (skeleton), 2 (data, logging), 3 (tokens), 4 (scheduler) and 5 (providers, WhatsApp) are
-> in place; the rest of this file is the planned layout. Packages and files that exist today are marked
-> **(m1)** … **(m5)**. Update this file as each milestone lands.
+> Status: milestones 1 (skeleton), 2 (data, logging), 3 (tokens), 4 (scheduler), 5 (providers, WhatsApp) and
+> 6 (pipeline, resolver, passthrough, notifications) are in place; the rest of this file is the planned layout.
+> Packages and files that exist today are marked **(m1)** … **(m6)**. Update this file as each milestone lands.
 
 ## Milestones
 
@@ -21,8 +21,8 @@ pipeline, channels, state); the Svelte GUI in a Wails window talks to it through
 - [x] 5. Provider layer (interface, registry, channel manager, fake provider) + WhatsApp provider: QR
       pairing, session persistence, number check, group list, document send; minimal Channels page.
       DPAPI secrets are deferred to the first provider that needs one (Telegram/ntfy).
-- [ ] 6. Pipeline with `passthrough`, resolver, multiple files × multiple recipients, pauses, error
-      aggregation, notifications to the error recipients.
+- [x] 6. Pipeline with `passthrough`, resolver, multiple files × multiple recipients, pauses, error
+      aggregation, notifications to the error recipients (6 h repeat, "works again"), send now, toasts.
 - [ ] 7. `xlsx-sheets` processor with tests on synthetic workbooks (formulas, missing sheet, locked file,
       no cached values).
 - [ ] 8. GUI screens (channels page, recipient picker), previews, delete confirmations, error recipients.
@@ -33,9 +33,12 @@ pipeline, channels, state); the Svelte GUI in a Wails window talks to it through
 wchron/
 ├── main.go             wiring (m1, m2): Wails app + single instance first, then devenv → paths → log file →
 │                       startup.Open (config/state load, backup, migrate) → store → service, window, tray;
-│                       (m4) scheduler (DryRunner) reloaded and started on ApplicationStarted, stopped first on quit;
+│                       (m4) scheduler reloaded and started on ApplicationStarted, stopped first on quit;
 │                       (m5) provider registry (the only place naming the providers) + channel manager, started
-│                       after the scheduler on ApplicationStarted, closed after it on quit
+│                       after the scheduler on ApplicationStarted, closed after it on quit;
+│                       (m6) toaster, notifier, processor registry (the only place naming the processors),
+│                       pipeline (the scheduler's Runner; OnStart/OnFinish → Store + run events); on
+│                       ApplicationStarted: toasts (main thread), temp cleanup, scheduler, channels
 ├── internal/           Go (go.mod: 1.26, toolchain 1.27) — core and platform layer (see below)
 ├── locales/            it.json, en.json (shared i18n catalog, flat namespaced keys) + embed.go (m1)
 ├── frontend/           Svelte 5 + TS + Vite + Tailwind 4 — GUI
@@ -59,13 +62,15 @@ wchron/
 internal/
 ├── app/            (m1, m2) Store (state loaded from config/state, persisted on change, side effects,
 │                   subscribers) + Service (the Wails bindings) + events; (m5) the Store is the channel
-│                   manager's ConfigStore and holds the channel list; channel bindings and events
+│                   manager's ConfigStore and holds the channel list; channel bindings and events;
+│                   (m6) runs in progress / failing schedules (Snapshot sending, run_error), SendNow,
+│                   AckErrors, run events
 ├── apperr/         (m1) Error{Code, Params, Err}, codes.go (registry mirrored by ERRORS.md), JSON `{code, params}`
 ├── clock/          (m3) Clock interface (Now), Real, Fake (Set/Advance) for tests
 ├── config/         (m2) config.json: types, defaults, normalization, structural validation, atomic save,
 │                   migrations.go; PeekLanguage for the startup dialog
 ├── state/          (m2) state.json: routine pause, last app version, per schedule last slot/result/error,
-│                   migrations.go, Quarantine of a corrupt file
+│                   migrations.go, Quarantine of a corrupt file; (m6) problems, partial, notified_signature/_at
 ├── migrate/        (m2) shared migration framework: append-only steps on the raw JSON, schema_version
 ├── fsutil/         (m2) atomic write (temp + fsync + rename), file/tree copy
 ├── backup/         (m2) Needed (when), Create (copy to backups/), Prune (keep the 10 most recent)
@@ -84,30 +89,45 @@ internal/
 ├── scheduler/      (m4) cadence.go: Validate (cadence.*, schedule.no_days) → plan; slots.go: per-day events
 │                   (fire / DST gap / DST repeat), cursor, Next(cadence, from, n, loc); scheduler.go: the loop
 │                   (Reload, Start, Stop, Wake; jitter, 5 min tolerance, aggregated slot.missed / slot.paused,
-│                   slot.overlap, parallel schedules, NextRun → OnNext); runner.go: Runner, Job, Result, DryRunner
-│                   (logs only, until the pipeline). Design in the package doc (doc.go)
-├── resolver/       path pattern → concrete file(s); glob match mode: error | newest | all
-├── processor/      Processor interface + registry; passthrough/, xlsxsheets/
+│                   slot.overlap, parallel schedules, NextRun → OnNext; (m6) RunNow: manual run, schedule.busy);
+│                   runner.go: Runner, Job (Manual), Result (Status, Err, Problems), SlotText. Design in doc.go
+├── resolver/       (m6) path pattern → concrete file(s) at the slot time: tokens, absolute, `*`/`?` in the name
+│                   only (case-insensitive), match error | newest | all; Open (shared read, file.locked /
+│                   file.unreadable), Validate for the editor (filespec.*). Design in the package doc
+├── processor/      (m6) Processor interface (Type, OptionsSchema, Validate, Process → Output + cleanup), Env,
+│   │               Registry (processor.unknown), Schemas; design in the package doc
+│   ├── passthrough/ (m6) temp copy of the original (Copy, also for other processors); no options
+│   └── xlsxsheets/ (m7) sheets reduction
 ├── provider/       (m5) provider.go: Provider, Channel, Pairer, LogoutChannel interfaces, Status/State,
 │   │               Capabilities, Field schemas, Message; registry.go: Registry, Info; manager.go: Manager (open
 │   │               enabled channels, connect, backoff reconnect 5 s→5 min, pairing, logout, rename, create,
 │   │               delete + recipient cleanup, Usage, ValidateTarget, ListTargets, pending recipient checks on
 │   │               connect, OnOutdated hook), ConfigStore, ErrTargetInvalid. Design in the package doc
+│   │               (m6) send.go: Manager.Send (one send at a time per channel, 2–5 s pause between two,
+│   │               cancellable), SendInfo, VerifyRecipient (check right before a send, stored in config)
 │   ├── whatsapp/   (m5) whatsmeow linked device (doc.go: design): provider.go (capabilities, schemas, Open),
 │   │   │           channel.go (status from events, pairing, logout, targets), send.go (documents, 100 MB,
 │   │   │           one retry), target.go (E.164 / group JID), client.go (waClient interface), real.go
 │   │   │           (whatsmeow adapter), session.go (session.db, corrupt → set aside), log.go (slog, masked)
 │   │   └── smoke/  (m5) `make smoke`: read-only live check of the paired dev channels
-│   └── fake/       (m5) in-memory provider: scriptable status, pairing, failures; records sends
-├── pipeline/       one run: per file resolve → process once → send to each recipient; 2–5 s pauses; error report
-├── notify/         report fan-out: desktop toast + text to each error recipient (any channel)
+│   └── fake/       (m5) in-memory provider: scriptable status, pairing, failures; records sends; (m6) OnSend hook
+├── pipeline/       (m6) one run (scheduler.Runner): resolve + process every file once, slot.late before the first
+│                   send, each recipient all files in order (channels in parallel), captions, capability and
+│                   recipient checks, result ok | partial | failed | skipped, report to notify, temp cleanup,
+│                   CleanTemp at startup. Design in the package doc
+├── notify/         (m6) report fan-out: toast + text to each error recipient; Signature, 6 h repeat, "works
+│                   again" notice, notify.failed; manual runs toast only. Design in the package doc
+├── toast/          (m6) notify.Toaster over the Wails notifications service (started by hand, never fatal;
+│                   click → window on #/status)
 ├── update/         GitHub release check / download, driven by update.config.json
 ├── version/        (m1) Version constant (set by set-version.mjs); (m2) Dev (false with the `production` build tag)
 ├── tray/           (m1) tray menu, toggles, dynamic icon drawn at run time (Icon(state, keepAwake)): the
 │                   logo + status dot (active green, paused grey, sending cyan, error red, disconnected
-│                   purple) + yellow keep-awake dot; (m4) status lines: channels, next run
+│                   purple) + yellow keep-awake dot; (m4) status lines: channels, next run; (m6) sending and
+│                   error states from the Snapshot (sending > error > paused > disconnected > active)
 └── platform/       interfaces + _windows.go / _other.go: SleepInhibitor, Autostart (m1); Paths (data dir
-                    layout, Ensure → storage.unavailable), FatalDialog (MessageBoxW) (m2); later Toast,
+                    layout, Ensure → storage.unavailable), FatalDialog (MessageBoxW) (m2); (m6) files.go:
+                    OpenShared (read, sharing read/write/delete), IsLocked, OpenExclusive (tests); later
                     Protect/Unprotect (DPAPI, for channel secrets: with the first provider that has one).
                     Single instance is Wails' SingleInstance option (in main.go).
 ```
@@ -139,21 +159,27 @@ name, enabled, status {state, error {code, params} | null, account}, pairing}`; 
 offline it is `verified: "unknown"` with the `recipient.check_unavailable` warning), `ListTargets(channelID)`
 (`[{target, display_name}]`). The Snapshot (m5) also carries `channel_list` (`ChannelInfo[]`) and the real
 `channels` summary (worst state among the enabled channels).
+Runs (m6): `SendNow(scheduleID)` starts a manual run at once (any schedule, enabled or not; no days, window or
+tolerance; `schedule.busy` while that schedule runs, `schedule.not_found`; acts for real; problems → toast
+only) and returns when it has started; `AckErrors()` clears the tray's error state (called by the Status page
+on mount) and returns the Snapshot. The Snapshot (m6) also carries `sending` (any run in progress) and
+`run_error` (a schedule failed or sent only in part and hasn't succeeded since, not acknowledged).
 `Logs(level, limit)` (m2) returns the most recent log entries `{time, level, msg, attrs}`, newest first
 (`level`: minimum, `""` for all; `limit` 0 = 200, max 5000; `logs.read_failed`); its viewer is milestone 8.
 `frontend/bindings` is generated (`make bindings`, and by every build) and git-ignored.
 
 Planned surface (names final at implementation): schedules CRUD (`ListSchedules`, `SaveSchedule`,
-`DeleteSchedule`: they validate with `scheduler.Validate`, check new recipients with `ValidateTarget` and call
-`Scheduler.Reload`), `ReadSheets(path)`, `SendNow(id)`, settings get/save, `CheckUpdate`,
-`ProcessorSchemas`.
+`DeleteSchedule`: they validate with `scheduler.Validate`, `resolver.Validate` and the processors' `Validate`,
+check new recipients with `ValidateTarget` and call `Scheduler.Reload`), `ReadSheets(path)`, settings get/save,
+`CheckUpdate`, `ProcessorSchemas` (`processor.Registry.Schemas`).
 Errors come back as `apperr.Error` serialized as `{code, params}`.
 
 Events (backend → frontend): `app:state` (m1: full Snapshot after every change, from the window or the
 tray; replaces the planned `routine:toggled`; m4: also when the next run changes, so there is no
 `schedule:next` event), (m5) `channel:status` (the `ChannelInfo` that changed) and `channel:qr` (pairing steps
 `{channel_id, kind: code|success|timeout|failed|cancelled, code, error}`),
-`run:started`, `run:finished`,
+(m6) `run:started` and `run:finished` (`RunEvent` `{schedule_id, schedule_name, manual, status, problems}`;
+`status` "" when started),
 `update:available`.
 
 ### Data and state
@@ -164,13 +190,14 @@ All under the data dir (default `%APPDATA%\wchron`, override `WCHRON_DATA_DIR`; 
 | Path | Content |
 | --- | --- |
 | `config.json` | `schema_version`, `settings`, `channels[]`, `schedules[]` (fields below); written on the first change, not at the first start |
-| `state.json` | `schema_version`, `routine_active`, `last_app_version`, `notified_update_version`, per schedule: last fired slot, last result, last error |
+| `state.json` | `schema_version`, `routine_active`, `last_app_version`, `notified_update_version`, per schedule: last fired slot, last result, last error, problems, notification memory |
 | `state.json.corrupt-<YYYYMMDD-HHMMSS>` | an unreadable `state.json` moved aside at startup (`state.read_failed`); never deleted by the app |
 | `channels/<id>/` | per-channel data (m5): WhatsApp `session.db` (whatsmeow sqlstore, `modernc.org/sqlite`; never logged); an unreadable one is renamed `session.db.corrupt-<YYYYMMDD-HHMMSS>` (never deleted by the app). Later: DPAPI-encrypted secrets of other providers. Created with the channel, deleted with it |
 | `logs/` | `wchron.log` (JSON lines) + up to 4 rotated `wchron-<timestamp>.log` (about 5 MB each, not compressed) |
 | `backups/<YYYYMMDD-HHMMSS>-v<old version>/` | copies of `config.json`, `state.json` and `channels/` (with the SQLite `-wal`/`-shm` files) made at startup before a migration, when the app version changed since the last run, or when `state.json` is missing next to a `config.json`. The 10 most recent are kept, older ones deleted (app-generated copies, not user data) |
 
-Temp copies for processors go in `%TEMP%\wchron\` and are removed after each send.
+Temp copies for processors go in `%TEMP%\wchron\<run-id>\<file>-<match>\` (m6) and are removed at the end of
+every run, also on failure; leftovers of a crash are removed at startup (`pipeline.CleanTemp`).
 
 **Formats and startup** (m2). Both files carry `schema_version` (current: 1) and change only through
 append-only steps in `internal/config/migrations.go` / `internal/state/migrations.go` (framework:
@@ -227,9 +254,12 @@ Missing fields are filled on load (nil lists become `[]`, empty enums their defa
 `last_app_version` (triggers the backup on upgrade), `notified_update_version`, `schedules`: map by
 schedule id of `{last_slot, last_result, last_error, last_run_at}` (m4: `last_slot` is the instant of the
 last slot that started a run, RFC 3339 with its offset, so the two autumn occurrences differ and a slot never
-runs twice; `last_run_at` when it started; `last_result` `ok` | `dry_run` (stub runner, nothing sent) |
-`skipped` | `failed`; `last_error` `{code, params}` of the failure or skip reason, or null; skips leave
-`last_slot`/`last_run_at` alone; times omitted when unset).
+runs twice; `last_run_at` when it started; `last_result` `ok` | `dry_run` (stub runner before 0.6.0, nothing sent) |
+`skipped` | `failed` | (m6) `partial`; `last_error` `{code, params}` of the most severe problem or the skip reason, or
+null; skips leave `last_slot`/`last_run_at` alone; times omitted when unset). (m6, added to v1 in place: v1 not
+released) `problems` (every problem of the last run, per file/recipient; a skip lists its reason),
+`notified_signature` / `notified_at` (notify's memory of the last reported problem set, cleared by the "works
+again" notice). A manual run sets `last_run_at` only.
 
 ### Configuration (dev-only env overrides)
 
@@ -270,7 +300,7 @@ Routing is a minimal hash router (`#/schedules`, `#/settings`…). (m1) marks wh
 | `components/Icon.svelte` | (m1) inline stroke icons of the nav |
 | `components/EmptyPage.svelte` | (m1) placeholder page: title + empty-state card |
 | `pages/Schedules.svelte` | list + editor (cadence, recipients on any channel, caption, files, next 5 runs, send now); m1: placeholder |
-| `pages/Status.svelte` | connection, last runs, errors, log viewer; m1: placeholder |
+| `pages/Status.svelte` | connection, last runs, errors, log viewer; m1: placeholder; m6: calls `ackErrors` on mount |
 | `pages/Settings.svelte` | error recipients, autostart, keep awake, language, theme, updates; m1: theme, language, autostart, keep awake, version; m2: keep awake at startup |
 | `pages/Channels.svelte` | (m5) channels list with live status (from the Snapshot), add channel (provider + name → its setup), pair, re-pair, log out, rename, delete (confirmations naming the channel; delete lists the affected schedules) |
 | `providers/index.ts` | (m5) per-provider UI by type (label, setup component): the only frontend place naming a provider |
@@ -278,7 +308,7 @@ Routing is a minimal hash router (`#/schedules`, `#/settings`…). (m1) marks wh
 | `components/QrCode.svelte` | (m5) QR as SVG, `uqr` loaded lazily; dark on light in every theme |
 | `components/ConfirmDialog.svelte` | (m5) modal `<dialog>` confirmation (title, consequences, danger button) |
 | `lib/pairing.svelte.ts` | (m5) pairing steps per channel from `channel:qr` |
-| `lib/api.ts` | (m1) the only module calling the bindings: `AppError` `{code, params}` mapping, null normalization, `onState`; (m2) `logs`; (m3) `previewTokens`; (m4) `previewRuns`; (m5) channel calls, `fromRef`, `onPairing` |
+| `lib/api.ts` | (m1) the only module calling the bindings: `AppError` `{code, params}` mapping, null normalization, `onState`; (m2) `logs`; (m3) `previewTokens`; (m4) `previewRuns`; (m5) channel calls, `fromRef`, `onPairing`; (m6) `sendNow`, `ackErrors`, `onRunFinished` |
 | `lib/state.svelte.ts` | (m1) Snapshot mirrored from Go (calls + `app:state` events), applies theme and language |
 | `lib/router.svelte.ts` | (m1) hash router |
 | `lib/i18n.svelte.ts` | (m1) `t()` / `tError()` over `../locales/*.json` (it typed as `typeof en`), current language |

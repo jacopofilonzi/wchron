@@ -74,7 +74,7 @@ func validateSchedule(p string, s *Schedule, ids map[string]bool) error {
 		default:
 			return invalid(fp+".match", "unknown match mode %q", f.Match)
 		}
-		// Processor types and options: processor registry (processor.*), milestone 6/7.
+		// Processor types and options: the processor registry (processor.*), checked by the editor and at run time.
 	}
 	return nil
 }
