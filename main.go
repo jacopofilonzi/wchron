@@ -5,8 +5,9 @@
 // exits a second instance right away (after notifying the first one), so
 // nothing with side effects may run before it. Then: dev env overrides →
 // data dir paths → log file → config.json and state.json (startup.Open:
-// load, backup, migrate, save) → Store → service, window, tray → Run; the
-// scheduler starts when the application has started and stops first on quit. A
+// load, backup, migrate, save) → Store → channel manager, service, window,
+// tray → Run; the scheduler and the channels start when the application has
+// started; on quit the scheduler stops first, then the channels close. A
 // fatal error shows a native error dialog in the user's language and exits
 // with code 1 without touching the data.
 package main
@@ -27,6 +28,8 @@ import (
 	"github.com/jacopofilonzi/wchron/internal/i18n"
 	"github.com/jacopofilonzi/wchron/internal/logging"
 	"github.com/jacopofilonzi/wchron/internal/platform"
+	"github.com/jacopofilonzi/wchron/internal/provider"
+	"github.com/jacopofilonzi/wchron/internal/provider/whatsapp"
 	"github.com/jacopofilonzi/wchron/internal/scheduler"
 	"github.com/jacopofilonzi/wchron/internal/startup"
 	"github.com/jacopofilonzi/wchron/internal/state"
@@ -50,6 +53,7 @@ func main() {
 		window  *application.WebviewWindow
 		store   *app.Store
 		sched   *scheduler.Scheduler
+		chans   *provider.Manager
 		logFile io.Closer
 	)
 	showWindow := func() {
@@ -81,6 +85,9 @@ func main() {
 		OnShutdown: func() {
 			if sched != nil && !sched.Stop(5*time.Second) {
 				log.Warn("quit with runs still in progress")
+			}
+			if chans != nil {
+				chans.Close()
 			}
 			if store != nil {
 				if err := store.Shutdown(); err != nil {
@@ -161,7 +168,27 @@ func main() {
 	if err := store.Start(); err != nil {
 		log.Warn("keep awake at startup", "err", err)
 	}
-	wails.RegisterService(application.NewService(app.NewService(store, paths.LogsDir(), clock.Real{})))
+	// The providers: the only place that names them (AGENTS.md "Adding a provider").
+	registry := provider.NewRegistry(whatsapp.New())
+	chans = provider.NewManager(provider.Options{
+		Registry:   registry,
+		Dir:        paths.ChannelsDir(),
+		Store:      store,
+		Log:        log,
+		Clock:      clock.Real{},
+		AppVersion: version.Version,
+		OnChange:   store.SetChannels,
+		OnStatus:   func(c provider.ChannelInfo) { wails.Event.Emit(app.EventChannelStatus, c) },
+		OnPairing:  func(p provider.PairingEvent) { wails.Event.Emit(app.EventChannelQR, p) },
+		OnSchedulesChanged: func() {
+			if sched != nil {
+				sched.Reload(store.Schedules())
+			}
+		},
+		// The update check arrives with milestone 10.
+		OnOutdated: func(id string) { log.Warn("channel rejected as outdated: an update is needed", "channel", id) },
+	})
+	wails.RegisterService(application.NewService(app.NewService(store, registry, chans, paths.LogsDir(), clock.Real{})))
 
 	window = wails.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "wchron",
@@ -200,6 +227,9 @@ func main() {
 	wails.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		sched.Reload(store.Schedules())
 		sched.Start()
+		// After the startup backup (startup.Open), never before: it copies
+		// channels/ as plain files.
+		chans.Start()
 	})
 
 	if err := wails.Run(); err != nil {

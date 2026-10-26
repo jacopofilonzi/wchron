@@ -9,6 +9,7 @@ import (
 	"github.com/jacopofilonzi/wchron/internal/apperr"
 	"github.com/jacopofilonzi/wchron/internal/config"
 	"github.com/jacopofilonzi/wchron/internal/i18n"
+	"github.com/jacopofilonzi/wchron/internal/provider"
 	"github.com/jacopofilonzi/wchron/internal/state"
 )
 
@@ -216,5 +217,68 @@ func TestScheduleStateAndNextRun(t *testing.T) {
 	}
 	if !st.RoutineActive() {
 		t.Fatal("routine active by default")
+	}
+}
+
+func TestChannelsSummary(t *testing.T) {
+	cfg := config.Default()
+	cfg.Channels = []config.Channel{{ID: "a", Provider: "fake", Name: "A", Enabled: true}}
+	st := NewStore(Deps{Inhibitor: &fakeInhibitor{}, Autostart: &fakeAutostart{}, Config: cfg, State: state.Default()})
+	if s := st.Snapshot(); s.Channels != ChannelsDisconnected || s.ChannelList == nil {
+		t.Fatalf("before the channels open: %+v", s)
+	}
+	on := func(id string, state provider.State, enabled bool) provider.ChannelInfo {
+		return provider.ChannelInfo{ID: id, Enabled: enabled, Status: provider.Status{State: state}}
+	}
+	cases := []struct {
+		list []provider.ChannelInfo
+		want ChannelsState
+	}{
+		{nil, ChannelsNone},
+		{[]provider.ChannelInfo{on("a", provider.StateConnected, true)}, ChannelsConnected},
+		{[]provider.ChannelInfo{on("a", provider.StateConnected, true), on("b", provider.StateNotPaired, true)}, ChannelsDisconnected},
+		{[]provider.ChannelInfo{on("a", provider.StateConnected, true), on("b", provider.StateError, false)}, ChannelsConnected},
+		{[]provider.ChannelInfo{on("b", provider.StateError, false)}, ChannelsNone},
+	}
+	for i, c := range cases {
+		st.SetChannels(c.list)
+		if s := st.Snapshot(); s.Channels != c.want || s.ChannelList == nil || len(s.ChannelList) != len(c.list) {
+			t.Errorf("case %d: got %v (%d)", i, s.Channels, len(s.ChannelList))
+		}
+	}
+}
+
+func TestUpdateConfigIsAtomic(t *testing.T) {
+	var saved []config.Config
+	fail := false
+	st := NewStore(Deps{Inhibitor: &fakeInhibitor{}, Autostart: &fakeAutostart{}, Config: config.Default(), State: state.Default(),
+		SaveConfig: func(c config.Config) error {
+			if fail {
+				return errors.New("disk full")
+			}
+			saved = append(saved, c)
+			return nil
+		}})
+	add := func(c *config.Config) error {
+		c.Channels = append(c.Channels, config.Channel{ID: "a", Provider: "fake", Name: "A"})
+		return nil
+	}
+	if err := st.UpdateConfig(add); err != nil || len(st.Config().Channels) != 1 || len(saved) != 1 {
+		t.Fatalf("update: %v", err)
+	}
+	fail = true
+	err := st.UpdateConfig(func(c *config.Config) error { c.Channels[0].Name = "B"; return nil })
+	if apperr.As(err).Code != apperr.ConfigWriteFailed || st.Config().Channels[0].Name != "A" {
+		t.Fatalf("a failed save must change nothing: %v %+v", err, st.Config().Channels)
+	}
+	fail = false
+	if err := st.UpdateConfig(func(*config.Config) error { return apperr.New(apperr.ChannelNotFound, nil) }); apperr.As(err).Code != apperr.ChannelNotFound {
+		t.Fatalf("change error: %v", err)
+	}
+	// Config is a deep copy.
+	c := st.Config()
+	c.Channels[0].Name = "mutated"
+	if st.Config().Channels[0].Name != "A" {
+		t.Fatal("Config must return a copy")
 	}
 }

@@ -32,7 +32,7 @@ endif
 # Packages without Wails, vetted for Linux too (the platform stubs must compile).
 CROSS_PKGS = ./locales/... ./internal/apperr/... ./internal/i18n/... ./internal/platform/... ./internal/logging/... \
   ./internal/version/... ./internal/devenv/... ./internal/fsutil/... ./internal/migrate/... ./internal/config/... \
-  ./internal/state/... ./internal/backup/... ./internal/startup/... ./internal/clock/... ./internal/tokens/... ./internal/scheduler/... ./internal/logo/...
+  ./internal/state/... ./internal/backup/... ./internal/startup/... ./internal/clock/... ./internal/tokens/... ./internal/scheduler/... ./internal/logo/... \n  ./internal/provider/...
 
 # go:embed needs frontend/dist to hold a file before the frontend is built.
 DIST_GUARD = node -e "const fs=require('fs');fs.mkdirSync('frontend/dist',{recursive:true});if(!fs.readdirSync('frontend/dist').length)fs.writeFileSync('frontend/dist/.keep','')"

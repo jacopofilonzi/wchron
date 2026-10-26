@@ -19,6 +19,11 @@
 // keep_awake_default at every launch, see Start), and autostart is read from
 // and written to the OS only.
 //
+// The Store is also the provider.Manager's access to config.json
+// (ConfigStore: deep copies in, atomic saves out) and receives its channel
+// list (SetChannels), summed up in Snapshot.Channels for the sidebar and the
+// tray.
+//
 // The Store is also the scheduler's view of the app (scheduler.Store): the
 // routine flag, each schedule's last slot/result in state.json (a failed save
 // is only logged, like the pause), and NextRun, the earliest upcoming run the
@@ -27,6 +32,7 @@
 package app
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"slices"
@@ -37,17 +43,17 @@ import (
 	"github.com/jacopofilonzi/wchron/internal/config"
 	"github.com/jacopofilonzi/wchron/internal/i18n"
 	"github.com/jacopofilonzi/wchron/internal/platform"
+	"github.com/jacopofilonzi/wchron/internal/provider"
 	"github.com/jacopofilonzi/wchron/internal/state"
 	"github.com/jacopofilonzi/wchron/internal/version"
 )
 
 // ChannelsState sums up the delivery channels (WhatsApp, later Telegram,
-// ntfy…) for the sidebar and the tray: the worst state among the configured ones.
+// ntfy…) for the sidebar and the tray: the worst state among the enabled ones.
 type ChannelsState string
 
 const (
-	// ChannelsNone: no channel configured yet (the only state until the
-	// providers land, milestone 5).
+	// ChannelsNone: no enabled channel configured.
 	ChannelsNone         ChannelsState = "none"
 	ChannelsConnected    ChannelsState = "connected"
 	ChannelsDisconnected ChannelsState = "disconnected"
@@ -63,7 +69,10 @@ type Snapshot struct {
 	Theme            config.Theme  `json:"theme"`
 	Language         i18n.Lang     `json:"language"`
 	Channels         ChannelsState `json:"channels"`
-	Version          string        `json:"version"`
+	// ChannelList is every configured channel with its status, in config
+	// order (set by the provider.Manager).
+	ChannelList []provider.ChannelInfo `json:"channel_list"`
+	Version     string                 `json:"version"`
 	// NextRun is the earliest upcoming scheduled run; null when no enabled
 	// schedule has one. It is shown even while the routine is paused.
 	NextRun *NextRun `json:"next_run"`
@@ -122,13 +131,104 @@ func NewStore(d Deps) *Store {
 			Autostart:        d.AutostartOn,
 			Theme:            set.Theme,
 			Language:         set.Language,
-			Channels:         ChannelsNone,
+			Channels:         initialChannels(d.Config.Channels),
+			ChannelList:      []provider.ChannelInfo{},
 			Version:          version.Version,
 		},
 		cfg: d.Config,
 		st:  d.State,
 		d:   d,
 	}
+}
+
+// initialChannels is the summary before the channels are opened: an
+// enabled channel is not connected yet.
+func initialChannels(cs []config.Channel) ChannelsState {
+	for _, c := range cs {
+		if c.Enabled {
+			return ChannelsDisconnected
+		}
+	}
+	return ChannelsNone
+}
+
+// summarize is the worst state among the enabled channels.
+func summarize(list []provider.ChannelInfo) ChannelsState {
+	sum := ChannelsNone
+	for _, c := range list {
+		if !c.Enabled {
+			continue
+		}
+		if c.Status.State != provider.StateConnected {
+			return ChannelsDisconnected
+		}
+		sum = ChannelsConnected
+	}
+	return sum
+}
+
+// SetChannels records the channel list (provider.Manager OnChange) and the
+// summary derived from it.
+func (st *Store) SetChannels(list []provider.ChannelInfo) {
+	if list == nil {
+		list = []provider.ChannelInfo{}
+	}
+	_, _ = st.update(func(s *Snapshot) (bool, error) {
+		s.ChannelList = list
+		s.Channels = summarize(list)
+		return true, nil
+	})
+}
+
+// Config returns a deep copy of the configuration (provider.ConfigStore).
+func (st *Store) Config() config.Config {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	c, err := cloneConfig(st.cfg)
+	if err != nil { // plain data: only a bug gets here
+		st.d.Log.Error("copy config", "err", err)
+		return st.cfg
+	}
+	return c
+}
+
+// UpdateConfig applies change to a copy of the configuration and saves it
+// (provider.ConfigStore). On an error from change or from the save
+// (config.write_failed) nothing changes.
+func (st *Store) UpdateConfig(change func(*config.Config) error) error {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	next, err := cloneConfig(st.cfg)
+	if err != nil {
+		return apperr.New(apperr.Internal, err)
+	}
+	if err := change(&next); err != nil {
+		return err
+	}
+	if err := st.d.SaveConfig(next); err != nil {
+		st.d.Log.Error("save config", "err", err)
+		e := apperr.As(err)
+		if e.Code == apperr.Internal {
+			e = apperr.New(apperr.ConfigWriteFailed, err)
+		}
+		return e
+	}
+	st.cfg = next
+	return nil
+}
+
+// cloneConfig deep-copies through JSON: the config is plain data, and a
+// change applied to the copy must never leak into the live one on failure.
+func cloneConfig(c config.Config) (config.Config, error) {
+	b, err := json.Marshal(c)
+	if err != nil {
+		return config.Config{}, fmt.Errorf("encode config: %w", err)
+	}
+	var out config.Config
+	if err := json.Unmarshal(b, &out); err != nil {
+		return config.Config{}, fmt.Errorf("decode config: %w", err)
+	}
+	return out, nil
 }
 
 // Start turns keep-awake on when the setting asks for it.

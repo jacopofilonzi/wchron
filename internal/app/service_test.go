@@ -1,6 +1,7 @@
 package app
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -11,12 +12,14 @@ import (
 	"github.com/jacopofilonzi/wchron/internal/clock"
 	"github.com/jacopofilonzi/wchron/internal/config"
 	"github.com/jacopofilonzi/wchron/internal/i18n"
+	"github.com/jacopofilonzi/wchron/internal/provider"
+	"github.com/jacopofilonzi/wchron/internal/provider/fake"
 )
 
 func TestPreviewTokens(t *testing.T) {
 	st := newStore(&fakeInhibitor{}, &fakeAutostart{}, false)
 	clk := clock.NewFake(time.Date(2026, 10, 26, 9, 0, 0, 0, time.UTC))
-	svc := NewService(st, t.TempDir(), clk)
+	svc := NewService(st, provider.NewRegistry(), nil, t.TempDir(), clk)
 
 	got, err := svc.PreviewTokens("{date-1d:dddd DD MMMM}")
 	if err != nil || got != "domenica 25 ottobre" {
@@ -43,7 +46,7 @@ func TestPreviewRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	st := newStore(&fakeInhibitor{}, &fakeAutostart{}, false)
-	svc := NewService(st, t.TempDir(), clock.NewFake(time.Date(2026, 10, 24, 23, 0, 0, 0, loc)))
+	svc := NewService(st, provider.NewRegistry(), nil, t.TempDir(), clock.NewFake(time.Date(2026, 10, 24, 23, 0, 0, 0, loc)))
 	svc.loc = loc
 	c := config.Cadence{Mode: config.CadenceInterval, Interval: config.Interval{Hours: 1}, Days: []config.Weekday{"sun"}}
 	got, err := svc.PreviewRuns(c, 0)
@@ -64,5 +67,58 @@ func TestPreviewRuns(t *testing.T) {
 	var e *apperr.Error
 	if !errors.As(err, &e) || e.Code != apperr.ScheduleNoDays {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestChannelBindings(t *testing.T) {
+	st := newStore(&fakeInhibitor{}, &fakeAutostart{}, false)
+	fp := fake.New()
+	fp.Unpaired = true
+	reg := provider.NewRegistry(fp)
+	var events []provider.PairingEvent
+	mgr := provider.NewManager(provider.Options{Registry: reg, Dir: t.TempDir(), Store: st, OnChange: st.SetChannels,
+		OnPairing: func(p provider.PairingEvent) { events = append(events, p) }})
+	defer mgr.Close()
+	mgr.Start()
+	svc := NewService(st, reg, mgr, t.TempDir(), clock.Real{})
+
+	if ps := svc.Providers(); len(ps) != 1 || ps[0].Type != fake.Type || !ps[0].Capabilities.Pairing {
+		t.Fatalf("providers: %+v", ps)
+	}
+	info, err := svc.CreateChannel(fake.Type, "Test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitState := func(want provider.State) {
+		t.Helper()
+		deadline := time.Now().Add(3 * time.Second)
+		for {
+			if l := st.Snapshot().ChannelList; len(l) == 1 && l[0].Status.State == want {
+				return
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("channel never reached %s: %+v", want, st.Snapshot().ChannelList)
+			}
+			time.Sleep(2 * time.Millisecond)
+		}
+	}
+	waitState(provider.StateNotPaired)
+	if st.Snapshot().Channels != ChannelsDisconnected {
+		t.Fatalf("summary: %v", st.Snapshot().Channels)
+	}
+	if _, err := svc.StartPairing(info.ID); err != nil {
+		t.Fatal(err)
+	}
+	waitState(provider.StateConnected)
+	if st.Snapshot().Channels != ChannelsConnected {
+		t.Fatalf("summary: %v", st.Snapshot().Channels)
+	}
+	chk, err := svc.ValidateTarget(t.Context(), info.ID, json.RawMessage(`{"to":"x"}`))
+	if err != nil || chk.Verified != config.VerifiedYes {
+		t.Fatalf("validate: %+v %v", chk, err)
+	}
+	if res, err := svc.DeleteChannel(info.ID); err != nil || !res.LoggedOut || len(svc.ListChannels()) != 0 ||
+		st.Snapshot().Channels != ChannelsNone || len(st.Config().Channels) != 0 {
+		t.Fatalf("delete: %+v %v", res, err)
 	}
 }

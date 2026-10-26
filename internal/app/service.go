@@ -1,12 +1,15 @@
 package app
 
 import (
+	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/jacopofilonzi/wchron/internal/clock"
 	"github.com/jacopofilonzi/wchron/internal/config"
 	"github.com/jacopofilonzi/wchron/internal/i18n"
 	"github.com/jacopofilonzi/wchron/internal/logging"
+	"github.com/jacopofilonzi/wchron/internal/provider"
 	"github.com/jacopofilonzi/wchron/internal/scheduler"
 	"github.com/jacopofilonzi/wchron/internal/tokens"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -17,26 +20,43 @@ import (
 // schedule event.
 const EventState = "app:state"
 
+// EventChannelStatus carries a channel whose status changed (ChannelInfo,
+// with its id); EventChannelQR every pairing step (PairingEvent: QR code,
+// success, timeout, failure, cancel).
+const (
+	EventChannelStatus = "channel:status"
+	EventChannelQR     = "channel:qr"
+)
+
+// channelCallTimeout bounds the calls that ask the service (target check,
+// group list).
+const channelCallTimeout = 30 * time.Second
+
 // The Store is the scheduler's view of the app state.
 var _ scheduler.Store = (*Store)(nil)
 
 func init() {
 	application.RegisterEvent[Snapshot](EventState)
+	application.RegisterEvent[provider.ChannelInfo](EventChannelStatus)
+	application.RegisterEvent[provider.PairingEvent](EventChannelQR)
 }
 
 // Service is the Wails service bound to the frontend. Each method returns the
 // new state, so the caller doesn't have to wait for EventState.
 type Service struct {
-	store   *Store
-	logsDir string
-	clock   clock.Clock
-	loc     *time.Location // time.Local; tests set Europe/Rome
+	store    *Store
+	channels *provider.Manager
+	registry *provider.Registry
+	logsDir  string
+	clock    clock.Clock
+	loc      *time.Location // time.Local; tests set Europe/Rome
 }
 
-// NewService wraps the store for the bindings; logsDir is where Logs reads,
-// clk the source of "now" for the previews (clock.Real in the app).
-func NewService(st *Store, logsDir string, clk clock.Clock) *Service {
-	return &Service{store: st, logsDir: logsDir, clock: clk, loc: time.Local}
+// NewService wraps the store and the channel manager for the bindings;
+// logsDir is where Logs reads, clk the source of "now" for the previews
+// (clock.Real in the app).
+func NewService(st *Store, reg *provider.Registry, channels *provider.Manager, logsDir string, clk clock.Clock) *Service {
+	return &Service{store: st, registry: reg, channels: channels, logsDir: logsDir, clock: clk, loc: time.Local}
 }
 
 // State returns the current state.
@@ -100,4 +120,69 @@ func (s *Service) PreviewRuns(c config.Cadence, n int) ([]string, error) {
 		out[i] = r.Format(time.RFC3339)
 	}
 	return out, nil
+}
+
+// Providers returns the available providers with their capabilities and
+// field schemas.
+func (s *Service) Providers() []provider.Info { return s.registry.Infos() }
+
+// ListChannels returns every configured channel with its status.
+func (s *Service) ListChannels() []provider.ChannelInfo { return s.channels.List() }
+
+// CreateChannel adds a channel of a provider with a name and opens it
+// (channel.name_required, channel.provider_unknown, config.write_failed).
+// A provider with pairing then needs StartPairing.
+func (s *Service) CreateChannel(providerType, name string) (provider.ChannelInfo, error) {
+	return s.channels.CreateChannel(providerType, name)
+}
+
+// RenameChannel changes a channel's name (channel.name_required,
+// channel.not_found, config.write_failed).
+func (s *Service) RenameChannel(id, name string) (provider.ChannelInfo, error) {
+	return s.channels.RenameChannel(id, name)
+}
+
+// ChannelUsage lists the schedules and error recipients that deleting the
+// channel affects, for the confirmation dialog.
+func (s *Service) ChannelUsage(id string) (provider.Usage, error) { return s.channels.Usage(id) }
+
+// DeleteChannel deletes a channel for good, after the confirmation: it logs
+// out where possible, removes its recipients (disabling the schedules left
+// without any) and its data. The result says whether the session was removed
+// from the service.
+func (s *Service) DeleteChannel(id string) (provider.DeleteResult, error) {
+	return s.channels.DeleteChannel(id)
+}
+
+// StartPairing starts the pairing of a channel (WhatsApp: QR codes through
+// EventChannelQR). A paired channel is logged out first (re-pair). Acts for
+// real on the account.
+func (s *Service) StartPairing(id string) (provider.ChannelInfo, error) {
+	return s.channels.StartPairing(id)
+}
+
+// CancelPairing stops a pairing in progress.
+func (s *Service) CancelPairing(id string) error { return s.channels.CancelPairing(id) }
+
+// Logout removes the channel's session from the service (WhatsApp: the
+// linked device) and keeps the channel for a new pairing
+// (channel.not_connected, channel.logout_failed). Acts for real.
+func (s *Service) Logout(id string) (provider.ChannelInfo, error) { return s.channels.Logout(id) }
+
+// ValidateTarget normalizes and checks a recipient's target on a channel
+// (wa.number_invalid, wa.not_on_whatsapp, wa.group_not_found…). When the
+// channel is not connected the result is unverified with the
+// recipient.check_unavailable warning, and can still be saved.
+func (s *Service) ValidateTarget(ctx context.Context, channelID string, target json.RawMessage) (provider.TargetCheck, error) {
+	ctx, cancel := context.WithTimeout(ctx, channelCallTimeout)
+	defer cancel()
+	return s.channels.ValidateTarget(ctx, channelID, target)
+}
+
+// ListTargets returns the groups/chats of a connected channel to pick from
+// (channel.not_connected, channel.targets_failed).
+func (s *Service) ListTargets(ctx context.Context, channelID string) ([]provider.Target, error) {
+	ctx, cancel := context.WithTimeout(ctx, channelCallTimeout)
+	defer cancel()
+	return s.channels.ListTargets(ctx, channelID)
 }
