@@ -2,11 +2,14 @@
 // (nil slices/maps arrive as null) and turns failures into AppError values
 // whose `code` the UI maps to `error.<code>` in the catalog.
 import { Events } from "@wailsio/runtime";
-import { Service, type Snapshot, type Theme } from "../../bindings/github.com/jacopofilonzi/wchron/internal/app";
+import { Service, type Snapshot } from "../../bindings/github.com/jacopofilonzi/wchron/internal/app";
+import type { Theme } from "../../bindings/github.com/jacopofilonzi/wchron/internal/config";
 import type { Lang } from "../../bindings/github.com/jacopofilonzi/wchron/internal/i18n";
+import type { Entry as LogEntry } from "../../bindings/github.com/jacopofilonzi/wchron/internal/logging";
 
-export type { Snapshot, Theme, Lang };
-export { Theme as Themes, ChannelsState } from "../../bindings/github.com/jacopofilonzi/wchron/internal/app";
+export type { Snapshot, Theme, Lang, LogEntry };
+export { ChannelsState } from "../../bindings/github.com/jacopofilonzi/wchron/internal/app";
+export { Theme as Themes } from "../../bindings/github.com/jacopofilonzi/wchron/internal/config";
 export { Lang as Langs } from "../../bindings/github.com/jacopofilonzi/wchron/internal/i18n";
 
 /** A user-visible error: `code` from ERRORS.md, `params` for the text placeholders. */
@@ -39,9 +42,15 @@ export const api = {
   state: () => call(() => Service.State()),
   setRoutineActive: (on: boolean) => call(() => Service.SetRoutineActive(on)),
   setKeepAwake: (on: boolean) => call(() => Service.SetKeepAwake(on)),
+  setKeepAwakeDefault: (on: boolean) => call(() => Service.SetKeepAwakeDefault(on)),
   setAutostart: (on: boolean) => call(() => Service.SetAutostart(on)),
   setTheme: (t: Theme) => call(() => Service.SetTheme(t)),
   setLanguage: (l: Lang) => call(() => Service.SetLanguage(l)),
+  /** Most recent log entries, newest first; level is the minimum ("" for all), limit 0 for the default. */
+  logs: (level: string, limit: number) =>
+    call(async (): Promise<LogEntry[]> =>
+      ((await Service.Logs(level, limit)) ?? []).map((e) => ({ ...e, attrs: e.attrs ?? {} })),
+    ),
 };
 
 /** Subscribes to every state change pushed by Go (tray or window); returns the unsubscribe function. */

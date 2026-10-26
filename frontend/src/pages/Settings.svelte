@@ -4,7 +4,7 @@
   import { t, tError, type Key } from "../lib/i18n.svelte";
   import { app, applySnapshot } from "../lib/state.svelte";
 
-  type Row = "appearance" | "autostart" | "keepawake";
+  type Row = "appearance" | "autostart" | "keepawake" | "keepawake_default";
   let errors = $state<Partial<Record<Row, AppError>>>({});
 
   const themes: { value: Theme; key: Key }[] = [
@@ -80,6 +80,18 @@
         {@render error("keepawake")}
       </div>
       <Toggle pressed={s.keep_awake} label={t("ui.settings.keepawake")} onchange={(on) => run("keepawake", api.setKeepAwake(on))} />
+    </div>
+    <div class="setting-row">
+      <div class="grow">
+        <div class="text-sm font-medium">{t("ui.settings.keepawake_default")}</div>
+        <div class="mt-0.5 text-muted">{t("ui.settings.keepawake_default.hint")}</div>
+        {@render error("keepawake_default")}
+      </div>
+      <Toggle
+        pressed={s.keep_awake_default}
+        label={t("ui.settings.keepawake_default")}
+        onchange={(on) => run("keepawake_default", api.setKeepAwakeDefault(on))}
+      />
     </div>
     <div class="setting-row">
       <div class="grow text-sm font-medium">{t("ui.settings.version", { version: s.version })}</div>
