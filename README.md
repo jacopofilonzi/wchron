@@ -102,8 +102,8 @@ of the send time.
 | `MMM` | short month name | `ott` / `Oct` |
 | `MM` | month, 2 digits | `10` |
 | `M` | month | `10` |
-| `DD` | day, 2 digits | `05` |
-| `D` | day | `5` |
+| `DD` | day, 2 digits | `26` (the 5th: `05`) |
+| `D` | day | `26` (the 5th: `5`) |
 | `dddd` | weekday name | `lunedì` / `Monday` |
 | `ddd` | short weekday name | `lun` / `Mon` |
 | `HH` | hour (00–23), 2 digits | `09` |
