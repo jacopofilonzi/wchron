@@ -9,7 +9,8 @@
 //     own caption) is left out for everyone; the others go on. Files are not
 //     waited for: a file being written at the slot is copied as it is. The
 //     name each recipient sees is the spec's send name (resolver.SendName,
-//     rendered at the slot; the processed file's name when empty); one that
+//     rendered at the slot; the processed file's name when empty; numbered
+//     " (n)" in match order when one spec yields several files); one that
 //     renders to an invalid file name is filespec.send_name_invalid and that
 //     file is skipped. Processor warnings (xlsx.sheet_missing,
 //     xlsx.no_cached_values) go into the report with the original file name;
@@ -330,7 +331,7 @@ func (p *Pipeline) prepare(ctx context.Context, r *run, sc config.Schedule, runD
 				continue
 			}
 			cleanups = append(cleanups, cleanup)
-			name, err := resolver.SendName(spec.SendName, out.Name, r.job.Slot, lang)
+			name, err := resolver.SendNameNumbered(spec.SendName, out.Name, r.job.Slot, lang, j+1, len(matches))
 			if err != nil {
 				e := apperr.As(err)
 				if e.Params["file"] == "" {

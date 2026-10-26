@@ -15,6 +15,13 @@ package resolver
 // dots ("Report 26.10.2026"), so only a trailing ".abc" made of letters and
 // digits with at least one letter counts as an extension: "Report 26.10.2026"
 // becomes "Report 26.10.2026.xlsx", "data.csv" stays as it is.
+//
+// Numbering (SendNameNumbered): when a custom name is set and the pattern of
+// a spec with match "all" yields several files, they would all reach the
+// recipient with the same name, so a progressive number in match order
+// (sorted by name, as Resolve returns them) goes before the extension:
+// "Report (1).xlsx", "Report (2).xlsx". A single match gets no number, and
+// without a custom name the original names (already different) are kept.
 
 import (
 	"fmt"
@@ -46,6 +53,26 @@ func SendName(template, outName string, t time.Time, lang i18n.Lang) (string, er
 	if ext := filepath.Ext(outName); ext != "" && !hasExtension(name) {
 		name += ext
 	}
+	if err := checkName(name); err != nil {
+		return "", err
+	}
+	return name, nil
+}
+
+// SendNameNumbered is SendName for match n (1-based) of total files of one
+// spec: with a custom template and total > 1, " (n)" goes before the
+// extension (see the numbering rule above).
+func SendNameNumbered(template, outName string, t time.Time, lang i18n.Lang, n, total int) (string, error) {
+	name, err := SendName(template, outName, t, lang)
+	if err != nil || template == "" || total <= 1 {
+		return name, err
+	}
+	stem, ext := name, ""
+	if hasExtension(name) {
+		ext = filepath.Ext(name)
+		stem = strings.TrimSuffix(name, ext)
+	}
+	name = fmt.Sprintf("%s (%d)%s", stem, n, ext)
 	if err := checkName(name); err != nil {
 		return "", err
 	}

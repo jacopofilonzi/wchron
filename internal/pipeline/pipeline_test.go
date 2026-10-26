@@ -466,6 +466,26 @@ func TestSendNames(t *testing.T) {
 	e.assertTempEmpty()
 }
 
+// Decision: a custom send name on a spec that matches several files numbers
+// them in match order; a single match and the original names stay as they are.
+func TestSendNamesNumbered(t *testing.T) {
+	e := newEnv(t, config.Config{Channels: []config.Channel{chn("a")}})
+	e.file("b-sales.pdf", "2")
+	e.file("a-sales.pdf", "1")
+	single := e.file("only.txt", "3")
+	all, plain, one := spec("1", filepath.Join(e.src, "*-sales.pdf")), spec("2", filepath.Join(e.src, "*-sales.pdf")), spec("3", single)
+	all.Match, plain.Match = config.MatchAll, config.MatchAll
+	all.SendName, one.SendName = "Report", "Report"
+	e.store.cfg.Schedules = []config.Schedule{{ID: "s", Name: "Sales", Enabled: true,
+		Files:      []config.FileSpec{all, plain, one},
+		Recipients: []config.Recipient{rcp("A", "a", config.VerifiedYes)}}}
+	res := e.run("s")
+	want := []string{`A Report (1).pdf ""`, `A Report (2).pdf ""`, `A a-sales.pdf ""`, `A b-sales.pdf ""`, `A Report.txt ""`}
+	if got := e.sends("a"); res.Status != state.ResultOK || fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("%s sends %v", res.Status, got)
+	}
+}
+
 func TestExcelValuesOnly(t *testing.T) {
 	e := newEnv(t, config.Config{Channels: []config.Channel{chn("a")}})
 	wb := excelize.NewFile()
