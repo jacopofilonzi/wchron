@@ -35,6 +35,7 @@ import (
 	"github.com/jacopofilonzi/wchron/internal/platform"
 	"github.com/jacopofilonzi/wchron/internal/processor"
 	"github.com/jacopofilonzi/wchron/internal/processor/passthrough"
+	"github.com/jacopofilonzi/wchron/internal/processor/xlsxsnapshot"
 	"github.com/jacopofilonzi/wchron/internal/provider"
 	"github.com/jacopofilonzi/wchron/internal/provider/whatsapp"
 	"github.com/jacopofilonzi/wchron/internal/scheduler"
@@ -236,7 +237,7 @@ func main() {
 		Store:    store,
 		Channels: chans,
 		// The processors: the only place that names them (AGENTS.md "Adding a processor").
-		Processors: processor.NewRegistry(passthrough.New()),
+		Processors: processor.NewRegistry(passthrough.New(), xlsxsnapshot.New()),
 		Reporter:   notifier,
 		Clock:      clock.Real{},
 		Location:   time.Local,
@@ -265,7 +266,9 @@ func main() {
 			store.SetNextRun(&app.NextRun{ScheduleID: n.ScheduleID, ScheduleName: n.ScheduleName, At: n.At})
 		},
 	})
-	wails.RegisterService(application.NewService(app.NewService(store, registry, chans, sched, paths.LogsDir(), clock.Real{})))
+	svc := app.NewService(store, registry, chans, sched, paths.LogsDir(), clock.Real{})
+	svc.SetSheetReader(xlsxsnapshot.ReadSheets)
+	wails.RegisterService(application.NewService(svc))
 	wails.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		// On the main thread, like a registered service's startup: it registers
 		// the toast activator with COM.

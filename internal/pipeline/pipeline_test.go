@@ -13,6 +13,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/xuri/excelize/v2"
+
 	"github.com/jacopofilonzi/wchron/internal/apperr"
 	"github.com/jacopofilonzi/wchron/internal/clock"
 	"github.com/jacopofilonzi/wchron/internal/config"
@@ -20,6 +22,7 @@ import (
 	"github.com/jacopofilonzi/wchron/internal/notify"
 	"github.com/jacopofilonzi/wchron/internal/processor"
 	"github.com/jacopofilonzi/wchron/internal/processor/passthrough"
+	"github.com/jacopofilonzi/wchron/internal/processor/xlsxsnapshot"
 	"github.com/jacopofilonzi/wchron/internal/provider"
 	"github.com/jacopofilonzi/wchron/internal/provider/fake"
 	"github.com/jacopofilonzi/wchron/internal/scheduler"
@@ -439,4 +442,59 @@ func TestCleanTempAndMask(t *testing.T) {
 	if got := maskParams(map[string]string{"recipient": "+39 333 1234567", "file": "a.pdf"}); got["recipient"] != "***567" || got["file"] != "a.pdf" {
 		t.Fatalf("mask %v", got)
 	}
+}
+
+func TestSendNames(t *testing.T) {
+	e := newEnv(t, config.Config{Channels: []config.Channel{chn("a")}})
+	f1, f2, f3, f4 := e.file("one.pdf", "1"), e.file("two.pdf", "2"), e.file("three.pdf", "3"), e.file("four.pdf", "4")
+	custom, dotted, bad := spec("2", f2), spec("3", f3), spec("4", f4)
+	custom.SendName = "Vendite {date:DD-MM-YYYY}.pdf"
+	dotted.SendName = "Report {date:DD.MM.YYYY}"
+	bad.SendName = "r {date:DD/MM}" // renders a "/"
+	e.store.cfg.Schedules = []config.Schedule{{ID: "s", Name: "Sales", Enabled: true,
+		Files:      []config.FileSpec{spec("1", f1), custom, dotted, bad},
+		Recipients: []config.Recipient{rcp("A", "a", config.VerifiedYes)}}}
+	res := e.run("s")
+	want := []string{`A one.pdf ""`, `A Vendite 26-10-2026.pdf ""`, `A Report 26.10.2026.pdf ""`}
+	if got := e.sends("a"); fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("sends %v", got)
+	}
+	if res.Status != state.ResultPartial || codes(res.Problems) != "filespec.send_name_invalid" ||
+		res.Problems[0].Params["file"] != "four.pdf" || res.Problems[0].Params["value"] != "r 26/10.pdf" {
+		t.Fatalf("result %s %s %+v", res.Status, codes(res.Problems), res.Problems)
+	}
+	e.assertTempEmpty()
+}
+
+func TestExcelValuesOnly(t *testing.T) {
+	e := newEnv(t, config.Config{Channels: []config.Channel{chn("a")}})
+	wb := excelize.NewFile()
+	if _, err := wb.NewSheet("Summary"); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(e.src, "sales.xlsm")
+	if err := wb.SaveAs(path); err != nil {
+		t.Fatal(err)
+	}
+	_ = wb.Close()
+	e.p.o.Processors = processor.NewRegistry(passthrough.New(), xlsxsnapshot.New())
+	snap, named := spec("x", path), spec("y", path)
+	snap.Processor, named.Processor = xlsxsnapshot.Type, xlsxsnapshot.Type
+	snap.ProcessorOptions = json.RawMessage(`{"sheets": ["summary", "Missing"]}`)
+	named.SendName = "Report {date:DD-MM}"
+	e.store.cfg.Schedules = []config.Schedule{{ID: "s", Name: "Sales", Enabled: true,
+		Files:      []config.FileSpec{snap, named},
+		Recipients: []config.Recipient{rcp("A", "a", config.VerifiedYes)}}}
+	res := e.run("s")
+	// The missing sheet is a warning: the file still goes, the result is ok.
+	if res.Status != state.ResultOK || codes(res.Problems) != "xlsx.sheet_missing" || res.Err.Code != apperr.XlsxSheetMissing ||
+		res.Problems[0].Params["file"] != "sales.xlsm" || res.Problems[0].Params["sheet"] != "Missing" ||
+		res.Problems[0].Params["schedule"] != "Sales" {
+		t.Fatalf("result %s %s %+v", res.Status, codes(res.Problems), res.Problems)
+	}
+	want := []string{`A sales.xlsx ""`, `A Report 26-10.xlsx ""`}
+	if got := e.sends("a"); fmt.Sprint(got) != fmt.Sprint(want) {
+		t.Fatalf("sends %v", got)
+	}
+	e.assertTempEmpty()
 }

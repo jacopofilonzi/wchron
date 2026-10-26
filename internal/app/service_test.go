@@ -3,15 +3,20 @@ package app
 import (
 	"encoding/json"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 	_ "time/tzdata" // Europe/Rome everywhere (tests only)
 
+	"github.com/xuri/excelize/v2"
+
 	"github.com/jacopofilonzi/wchron/internal/apperr"
 	"github.com/jacopofilonzi/wchron/internal/clock"
 	"github.com/jacopofilonzi/wchron/internal/config"
 	"github.com/jacopofilonzi/wchron/internal/i18n"
+	"github.com/jacopofilonzi/wchron/internal/processor/xlsxsnapshot"
 	"github.com/jacopofilonzi/wchron/internal/provider"
 	"github.com/jacopofilonzi/wchron/internal/provider/fake"
 )
@@ -182,5 +187,48 @@ func TestRunStateAndAck(t *testing.T) {
 	}
 	if len(snaps) == 0 || snaps[len(snaps)-1].RunError {
 		t.Fatal("listeners must see the ack")
+	}
+}
+
+func TestReadSheets(t *testing.T) {
+	st := newStore(&fakeInhibitor{}, &fakeAutostart{}, false)
+	svc := NewService(st, provider.NewRegistry(), nil, nil, t.TempDir(), clock.NewFake(time.Date(2026, 10, 26, 9, 0, 0, 0, time.UTC)))
+	if _, err := svc.ReadSheets(`C:\x.xlsx`); apperr.As(err).Code != apperr.Internal {
+		t.Fatalf("no reader: %v", err)
+	}
+	svc.SetSheetReader(xlsxsnapshot.ReadSheets)
+	dir := t.TempDir()
+	wb := excelize.NewFile()
+	for _, n := range []string{"Vendite", "Riepilogo"} {
+		if _, err := wb.NewSheet(n); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := wb.SaveAs(filepath.Join(dir, "report 26-10-2026.xlsx")); err != nil {
+		t.Fatal(err)
+	}
+	_ = wb.Close()
+	got, err := svc.ReadSheets(filepath.Join(dir, "report {date:DD-MM-YYYY}.xlsx"))
+	if err != nil || strings.Join(got, ",") != "Sheet1,Vendite,Riepilogo" {
+		t.Fatalf("got %v, %v", got, err)
+	}
+	if got, err = svc.ReadSheets(filepath.Join(dir, "report *.xlsx")); err != nil || len(got) != 3 {
+		t.Fatalf("glob: %v, %v", got, err)
+	}
+	for pattern, code := range map[string]apperr.Code{
+		filepath.Join(dir, "missing.xlsx"):   apperr.FileNotFound,
+		"relative.xlsx":                      apperr.FilespecPathNotAbsolute,
+		filepath.Join(dir, "{date:QQ}.xlsx"): apperr.TokenFormatInvalid,
+	} {
+		if _, err := svc.ReadSheets(pattern); apperr.As(err).Code != code {
+			t.Errorf("%s: %v, want %s", pattern, err, code)
+		}
+	}
+	notes := filepath.Join(dir, "notes.txt")
+	if err := os.WriteFile(notes, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.ReadSheets(notes); apperr.As(err).Code != apperr.XlsxNotXlsx {
+		t.Fatalf("txt: %v", err)
 	}
 }

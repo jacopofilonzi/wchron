@@ -7,7 +7,13 @@
 //     from the registry, on a temp copy under %TEMP%\wchron\<run-id>\). A
 //     file that fails (file.*, processor.*, temp.unavailable, token.* of its
 //     own caption) is left out for everyone; the others go on. Files are not
-//     waited for: a file being written at the slot is copied as it is.
+//     waited for: a file being written at the slot is copied as it is. The
+//     name each recipient sees is the spec's send name (resolver.SendName,
+//     rendered at the slot; the processed file's name when empty); one that
+//     renders to an invalid file name is filespec.send_name_invalid and that
+//     file is skipped. Processor warnings (xlsx.sheet_missing,
+//     xlsx.no_cached_values) go into the report with the original file name;
+//     the file is still sent.
 //  2. The slot tolerance is checked once, right before the first send:
 //     after the Job's Deadline the run is skipped (slot.late); a long run is
 //     never cut halfway. A manual run ("send now") has no deadline.
@@ -149,9 +155,12 @@ func New(o Options) *Pipeline {
 }
 
 // warnings are the codes that don't make a send fail (the file still went
-// out, or the problem is only in the report). xlsx.no_cached_values joins
-// with milestone 7.
-var warnings = map[apperr.Code]bool{apperr.NotifyFailed: true}
+// out, or the problem is only in the report).
+var warnings = map[apperr.Code]bool{
+	apperr.NotifyFailed:       true,
+	apperr.XlsxSheetMissing:   true,
+	apperr.XlsxNoCachedValues: true,
+}
 
 // IsWarning reports whether a problem code is only a warning.
 func IsWarning(c apperr.Code) bool { return warnings[c] }
@@ -321,15 +330,24 @@ func (p *Pipeline) prepare(ctx context.Context, r *run, sc config.Schedule, runD
 				continue
 			}
 			cleanups = append(cleanups, cleanup)
+			name, err := resolver.SendName(spec.SendName, out.Name, r.job.Slot, lang)
+			if err != nil {
+				e := apperr.As(err)
+				if e.Params["file"] == "" {
+					e = e.With("file", m.Name)
+				}
+				r.add(e)
+				continue
+			}
 			for _, w := range out.Warnings {
-				r.add(w.With("file", out.Name))
+				r.add(w.With("file", m.Name))
 			}
 			info, err := os.Stat(out.Path)
 			if err != nil {
 				r.add(apperr.New(apperr.TempUnavailable, fmt.Errorf("stat processed copy: %w", err)).With("file", m.Name))
 				continue
 			}
-			items = append(items, item{path: out.Path, name: out.Name, size: info.Size(), caption: own})
+			items = append(items, item{path: out.Path, name: name, size: info.Size(), caption: own})
 		}
 	}
 	return items, cleanups

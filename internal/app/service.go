@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/jacopofilonzi/wchron/internal/i18n"
 	"github.com/jacopofilonzi/wchron/internal/logging"
 	"github.com/jacopofilonzi/wchron/internal/provider"
+	"github.com/jacopofilonzi/wchron/internal/resolver"
 	"github.com/jacopofilonzi/wchron/internal/scheduler"
 	"github.com/jacopofilonzi/wchron/internal/tokens"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -77,6 +79,28 @@ type Service struct {
 	logsDir  string
 	clock    clock.Clock
 	loc      *time.Location // time.Local; tests set Europe/Rome
+	// sheets reads a workbook's sheet names (xlsxsnapshot.ReadSheets, set in
+	// main.go: this package doesn't name the processors).
+	sheets func(path string) ([]string, error)
+}
+
+// SetSheetReader sets the function behind ReadSheets.
+func (s *Service) SetSheetReader(fn func(path string) ([]string, error)) { s.sheets = fn }
+
+// ReadSheets resolves a file pattern now (tokens rendered for now, in the
+// current language; a wildcard takes the newest match) and returns the
+// workbook's sheet names in workbook order, for the editor's "read the
+// sheets from the file". Errors: filespec.*, token.*, file.*,
+// xlsx.not_xlsx, xlsx.open_failed.
+func (s *Service) ReadSheets(pathPattern string) ([]string, error) {
+	if s.sheets == nil {
+		return nil, apperr.New(apperr.Internal, errors.New("no sheet reader configured"))
+	}
+	ms, err := resolver.Resolve(config.FileSpec{PathPattern: pathPattern, Match: config.MatchNewest}, s.clock.Now(), s.store.Snapshot().Language)
+	if err != nil {
+		return nil, err
+	}
+	return s.sheets(ms[0].Path)
 }
 
 // NewService wraps the store, the channel manager and the scheduler (runs)
