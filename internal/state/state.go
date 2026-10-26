@@ -12,7 +12,9 @@
 //	  "notified_update_version": "",     // the last update already notified
 //	  "schedules": {                     // by schedule id
 //	    "<id>": {"last_slot": RFC 3339, "last_result": "…",
-//	             "last_error": {"code", "params"} | null, "last_run_at": RFC 3339}
+//	             "last_error": {"code", "params"} | null, "last_run_at": RFC 3339,
+//	             "problems": [{"code", "params"}],
+//	             "notified_signature": "…", "notified_at": RFC 3339}
 //	  }
 //	}
 //
@@ -22,7 +24,15 @@
 // and never to run the same slot twice. last_run_at is when that run started.
 // last_result is one of the Result* values; last_error is the code of a
 // failure or of a skip reason (slot.missed, slot.paused…), null when the last
-// run went fine. Skips don't change last_slot or last_run_at.
+// run went fine. Skips don't change last_slot or last_run_at. problems lists
+// every problem of the last run per file and recipient (warnings and
+// notify.failed included; a skip lists only its reason). A manual run
+// ("send now") sets last_run_at, never last_slot.
+//
+// notified_signature and notified_at are the error notifications' memory
+// (package notify): the signature of the problem set last reported to the
+// desktop and the error recipients, and when; empty once a "resolved"
+// notice went out. They were added to version 1 in place (not released yet).
 //
 // Loading: a missing file gives the defaults. A file that can't be read or
 // parsed is not fatal: Load returns the defaults plus a state.read_failed
@@ -51,22 +61,29 @@ type State struct {
 
 // ScheduleState is the memory of one schedule's last run.
 type ScheduleState struct {
-	LastSlot   time.Time `json:"last_slot,omitzero"`
-	LastResult string    `json:"last_result"`
-	LastError  *ErrorRef `json:"last_error"`
-	LastRunAt  time.Time `json:"last_run_at,omitzero"`
+	LastSlot   time.Time  `json:"last_slot,omitzero"`
+	LastResult string     `json:"last_result"`
+	LastError  *ErrorRef  `json:"last_error"`
+	LastRunAt  time.Time  `json:"last_run_at,omitzero"`
+	Problems   []ErrorRef `json:"problems"`
+	// NotifiedSignature and NotifiedAt: see the package doc (notify).
+	NotifiedSignature string    `json:"notified_signature,omitempty"`
+	NotifiedAt        time.Time `json:"notified_at,omitzero"`
 }
 
 // The values of ScheduleState.LastResult.
 const (
-	// ResultOK: the run completed (pipeline, milestone 6).
+	// ResultOK: every planned send went out (warnings may be listed in
+	// Problems).
 	ResultOK = "ok"
-	// ResultDryRun: the run was only logged (the stub runner used until the
-	// pipeline lands); nothing was sent.
+	// ResultPartial: some sends went out, some failed or were skipped.
+	ResultPartial = "partial"
+	// ResultDryRun: the run was only logged by the stub runner of versions
+	// before 0.6.0; nothing was sent. Still readable in old files.
 	ResultDryRun = "dry_run"
 	// ResultSkipped: the slot was not run; LastError holds the reason.
 	ResultSkipped = "skipped"
-	// ResultFailed: the run failed; LastError holds the error.
+	// ResultFailed: nothing was sent; LastError holds the most severe problem.
 	ResultFailed = "failed"
 )
 
@@ -91,7 +108,15 @@ func (s *State) Normalize() {
 	for id, sc := range s.Schedules {
 		if sc.LastError != nil && sc.LastError.Params == nil {
 			sc.LastError.Params = map[string]string{}
-			s.Schedules[id] = sc
 		}
+		if sc.Problems == nil {
+			sc.Problems = []ErrorRef{}
+		}
+		for i := range sc.Problems {
+			if sc.Problems[i].Params == nil {
+				sc.Problems[i].Params = map[string]string{}
+			}
+		}
+		s.Schedules[id] = sc
 	}
 }

@@ -492,17 +492,55 @@ func TestLoopAndStop(t *testing.T) {
 	}
 }
 
-func TestDryRunner(t *testing.T) {
-	clk := clock.NewFake(june(10, 1, 0))
-	r := DryRunner{Clock: clk, Log: slog.New(slog.DiscardHandler)}
-	job := Job{ScheduleID: "a", ScheduleName: "Report a", Slot: june(10, 0, 0), Deadline: june(10, 5, 0)}
-	if res := r.Run(context.Background(), job); res.Status != state.ResultDryRun || res.Err != nil {
-		t.Fatalf("got %+v", res)
+func TestRunNow(t *testing.T) {
+	h := newHarness(t, harnessOpts{start: june(10, 3, 0), block: true})
+	if err := h.s.RunNow("a", "Report a"); err != nil {
+		t.Fatal(err)
 	}
-	clk.Set(june(10, 5, 1))
-	res := r.Run(context.Background(), job)
-	if res.Status != state.ResultSkipped || res.Err == nil || res.Err.Code != apperr.SlotLate ||
-		res.Err.Params["slot"] != "2026-06-01 10:00" || res.Err.Params["schedule"] != "Report a" {
-		t.Fatalf("late: %+v", res)
+	job := <-h.runner.jobs
+	if !job.Manual || job.ScheduleID != "a" || !job.Slot.Equal(june(10, 3, 0)) || !job.Deadline.IsZero() {
+		t.Fatalf("job %+v", job)
+	}
+	// Busy while the first one runs.
+	err := h.s.RunNow("a", "Report a")
+	if e := apperr.As(err); e.Code != apperr.ScheduleBusy || e.Params["name"] != "Report a" {
+		t.Fatalf("second: %v", err)
+	}
+	st := h.store.ScheduleState("a")
+	if !st.LastSlot.IsZero() || !st.LastRunAt.Equal(june(10, 3, 0)) {
+		t.Fatalf("state %+v", st)
+	}
+	h.runner.release <- struct{}{}
+	deadline := time.Now().Add(3 * time.Second)
+	for h.s.RunNow("a", "Report a") != nil {
+		if time.Now().After(deadline) {
+			t.Fatal("still busy after the run ended")
+		}
+		time.Sleep(time.Millisecond)
+	}
+	<-h.runner.jobs
+}
+
+type problemRunner struct{}
+
+func (problemRunner) Run(context.Context, Job) Result {
+	p := apperr.New(apperr.FileNotFound, nil).With("path", `C:\x`)
+	return Result{Status: state.ResultPartial, Err: p, Problems: []*apperr.Error{p, apperr.New(apperr.SendFailed, nil)}}
+}
+
+func TestRunStoresProblems(t *testing.T) {
+	store := newMemStore()
+	s := New(Options{Clock: clock.NewFake(june(10, 0, 0)), Location: time.UTC, Runner: problemRunner{}, Store: store})
+	if err := s.RunNow("a", "A"); err != nil {
+		t.Fatal(err)
+	}
+	s.Stop(time.Second)
+	st := store.ScheduleState("a")
+	if st.LastResult != state.ResultPartial || st.LastError.Code != apperr.FileNotFound || len(st.Problems) != 2 ||
+		st.Problems[1].Code != apperr.SendFailed || st.Problems[1].Params == nil {
+		t.Fatalf("state %+v", st)
+	}
+	if err := s.RunNow("a", "A"); apperr.As(err).Code != apperr.ScheduleBusy {
+		t.Fatalf("after stop: %v", err)
 	}
 }

@@ -2,6 +2,7 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"math/rand/v2"
 	"slices"
@@ -322,6 +323,12 @@ func (s *Scheduler) fire(e *entry, ev event, now time.Time) {
 	job := Job{ScheduleID: e.id, ScheduleName: e.name, Slot: ev.at, Deadline: ev.at.Add(Tolerance)}
 	s.o.Log.Info("scheduler: run", "schedule", e.id, "name", e.name, "slot", ev.at.Format(time.RFC3339),
 		"delay", now.Sub(ev.at).Round(time.Second))
+	s.start(job)
+}
+
+// start runs job on its own goroutine; the caller has set s.busy. Called
+// with s.mu held.
+func (s *Scheduler) start(job Job) {
 	s.runs.Add(1)
 	go func() {
 		defer s.runs.Done()
@@ -329,15 +336,34 @@ func (s *Scheduler) fire(e *entry, ev event, now time.Time) {
 		s.o.Store.UpdateScheduleState(job.ScheduleID, func(st *state.ScheduleState) {
 			st.LastResult = res.Status
 			st.LastError = errorRef(res.Err)
+			st.Problems = errorRefs(res.Problems)
 		})
 		if res.Err != nil {
 			s.o.Log.Info("scheduler: run result", "schedule", job.ScheduleID, "status", res.Status,
-				"code", res.Err.Code, "params", res.Err.Params, "err", res.Err)
+				"code", res.Err.Code, "problems", len(res.Problems))
 		}
 		s.mu.Lock()
 		delete(s.busy, job.ScheduleID)
 		s.mu.Unlock()
 	}()
+}
+
+// RunNow starts a manual run ("send now") of a schedule, enabled or not,
+// at once: no days, window, jitter or tolerance, and no last_slot. A run of
+// the same schedule in progress refuses it (schedule.busy); so does a
+// stopped scheduler (the app is quitting).
+func (s *Scheduler) RunNow(id, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.busy[id] || s.ctx.Err() != nil {
+		return apperr.New(apperr.ScheduleBusy, errors.New("a run is in progress")).With("name", name)
+	}
+	now := s.o.Clock.Now()
+	s.busy[id] = true
+	s.o.Store.UpdateScheduleState(id, func(st *state.ScheduleState) { st.LastRunAt = now })
+	s.o.Log.Info("scheduler: send now", "schedule", id, "name", name)
+	s.start(Job{ScheduleID: id, ScheduleName: name, Slot: now, Manual: true})
+	return nil
 }
 
 // skip records a single-slot skip reason in the log and the schedule's state.
@@ -355,6 +381,7 @@ func (s *Scheduler) record(e *entry, code apperr.Code, params map[string]string,
 	s.o.Store.UpdateScheduleState(e.id, func(st *state.ScheduleState) {
 		st.LastResult = state.ResultSkipped
 		st.LastError = &state.ErrorRef{Code: code, Params: params}
+		st.Problems = []state.ErrorRef{*st.LastError}
 	})
 }
 
@@ -403,6 +430,16 @@ func (s *Scheduler) publishUnlock() {
 	if !same && s.o.OnNext != nil {
 		s.o.OnNext(n)
 	}
+}
+
+func errorRefs(es []*apperr.Error) []state.ErrorRef {
+	out := make([]state.ErrorRef, 0, len(es))
+	for _, e := range es {
+		if r := errorRef(e); r != nil {
+			out = append(out, *r)
+		}
+	}
+	return out
 }
 
 func errorRef(e *apperr.Error) *state.ErrorRef {

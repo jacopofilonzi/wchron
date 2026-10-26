@@ -73,7 +73,9 @@
 //   - Stop cancels the waits and the runs' context and waits briefly for
 //     the runs in progress.
 //
-// Until the pipeline exists, the app runs DryRunner, which only logs.
+// The runner is the pipeline (internal/pipeline). RunNow starts a manual run
+// ("send now") outside the slots, under the same no-overlap guard
+// (schedule.busy instead of slot.overlap).
 //
 // Known limit: Go reads the system time zone once at process start, so a
 // time zone change in Windows takes effect after a restart of the app.
