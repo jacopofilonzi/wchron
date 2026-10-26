@@ -1,3 +1,9 @@
+<script lang="ts" module>
+  // A notice that survives the remount after a new schedule is saved (the
+  // route moves from #/schedules/new to its id).
+  let flash = "";
+</script>
+
 <script lang="ts">
   // The schedule editor (#/schedules/<id>, #/schedules/new): name, when,
   // recipients, caption, files; next runs, enable, send now, delete. Edits
@@ -34,7 +40,8 @@
   let problems = $state<Problem[]>([]);
   let saveError = $state<AppError | null>(null);
   let saving = $state(false);
-  let notice = $state("");
+  let notice = $state(flash);
+  flash = "";
   let adding = $state(false);
 
   type Confirm =
@@ -124,7 +131,10 @@
     draft = r.value.schedule;
     saved = JSON.stringify(r.value.schedule);
     notice = t("ui.editor.saved");
-    if (isNew) go(href("schedules", r.value.schedule.id));
+    if (isNew) {
+      flash = notice;
+      go(href("schedules", r.value.schedule.id));
+    }
   }
 
   async function addFile() {

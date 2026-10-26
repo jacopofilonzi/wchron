@@ -102,19 +102,17 @@
         <label for="cad-anchor" class="text-muted">{t("ui.editor.when.anchor")}</label>
         <TimeInput id="cad-anchor" bind:value={cadence.anchor} invalid={errorFor("anchor") !== null} />
       </div>
+    </div>
+    <div class="flex flex-wrap items-center gap-2">
       <label class="flex h-9 items-center gap-2">
         <input type="checkbox" checked={cadence.window !== null} onchange={(e) => setWindow(e.currentTarget.checked)} />
         {t("ui.editor.when.window")}
       </label>
       {#if cadence.window}
-        <div class="flex flex-col gap-1.5">
-          <label for="cad-from" class="text-muted">{t("ui.editor.when.from")}</label>
-          <TimeInput id="cad-from" bind:value={cadence.window.start} invalid={errorFor("window") !== null} />
-        </div>
-        <div class="flex flex-col gap-1.5">
-          <label for="cad-to" class="text-muted">{t("ui.editor.when.to")}</label>
-          <TimeInput id="cad-to" bind:value={cadence.window.end} invalid={errorFor("window") !== null} />
-        </div>
+        <label for="cad-from" class="ml-2 text-muted">{t("ui.editor.when.from")}</label>
+        <TimeInput id="cad-from" bind:value={cadence.window.start} invalid={errorFor("window") !== null} />
+        <label for="cad-to" class="text-muted">{t("ui.editor.when.to")}</label>
+        <TimeInput id="cad-to" bind:value={cadence.window.end} invalid={errorFor("window") !== null} />
       {/if}
     </div>
     {@render err("interval")}

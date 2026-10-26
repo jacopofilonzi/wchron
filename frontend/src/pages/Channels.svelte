@@ -175,9 +175,12 @@
 </script>
 
 <div class="flex items-center justify-between gap-4">
-  <h1 class="page-title">{t("ui.channels.title")}</h1>
+  <div>
+    <h1 class="page-title">{t("ui.channels.title")}</h1>
+    <p class="m-0 mt-1 text-[13px] text-muted">{t("ui.channels.subtitle")}</p>
+  </div>
   {#if !adding}
-    <button type="button" class="btn btn-primary" disabled={providers.length === 0} onclick={() => (adding = true)}>
+    <button type="button" class="btn btn-primary h-9" disabled={providers.length === 0} onclick={() => (adding = true)}>
       {t("ui.channels.add")}
     </button>
   {/if}
@@ -263,7 +266,7 @@
               </button>
             {/if}
             <button type="button" class="btn" onclick={() => (renaming = { id: c.id, name: c.name })}>{t("ui.channels.rename")}</button>
-            <button type="button" class="btn" onclick={() => askDelete(c)}>{t("ui.channels.delete")}</button>
+            <button type="button" class="btn btn-danger-outline" onclick={() => askDelete(c)}>{t("ui.channels.delete")}</button>
           </div>
         </div>
         {#if reason && !c.pairing}

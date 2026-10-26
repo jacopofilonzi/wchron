@@ -64,5 +64,5 @@
       }
     }}
   />
-  <button type="button" class="btn h-8" disabled={draft.trim() === ""} onclick={add}>{t("ui.chips.add")}</button>
+  <button type="button" class="btn h-8" aria-label={t("ui.chips.add_to", { label })} disabled={draft.trim() === ""} onclick={add}>{t("ui.chips.add")}</button>
 </div>

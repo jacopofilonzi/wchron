@@ -4,6 +4,7 @@
   // its options, own caption, name to send with its live preview (computed
   // in Go). Reorder and remove are the page's.
   import ChipsInput from "../ChipsInput.svelte";
+  import Icon from "../Icon.svelte";
   import SegmentedControl from "../SegmentedControl.svelte";
   import {
     api,
@@ -141,9 +142,14 @@
     sheets = r.ok ? r.value : null;
     sheetsError = r.ok ? null : r.error;
   }
+  // The value that selects a sheet: its name, or a token that renders to it now.
+  function selectedSheet(key: string, name: string): string | null {
+    return listOpt(key).find((v) => v === name || valuePreviews[v] === name) ?? null;
+  }
   function toggleSheet(key: string, name: string) {
     const cur = listOpt(key);
-    setOpt(key, cur.includes(name) ? cur.filter((x) => x !== name) : [...cur, name]);
+    const sel = selectedSheet(key, name);
+    setOpt(key, sel !== null ? cur.filter((x) => x !== sel) : [...cur, name]);
   }
 
   const matchHints: Record<string, Key> = {
@@ -176,9 +182,9 @@
       aria-invalid={p("path_pattern") !== null}
       bind:value={file.path_pattern}
     />
-    <button type="button" class="icon-btn" disabled={index === 0} aria-label={t("ui.editor.file.up")} onclick={onup}>↑</button>
-    <button type="button" class="icon-btn" disabled={index === count - 1} aria-label={t("ui.editor.file.down")} onclick={ondown}>↓</button>
-    <button type="button" class="icon-btn" aria-label={t("ui.editor.file.remove")} onclick={onremove}>×</button>
+    <button type="button" class="icon-btn" disabled={index === 0} aria-label={t("ui.editor.file.up")} onclick={onup}><Icon name="up" /></button>
+    <button type="button" class="icon-btn" disabled={index === count - 1} aria-label={t("ui.editor.file.down")} onclick={ondown}><Icon name="down" /></button>
+    <button type="button" class="icon-btn" aria-label={t("ui.editor.file.remove")} onclick={onremove}><Icon name="close" /></button>
   </div>
   <div class="flex flex-col gap-3 pl-7">
     {@render err("path_pattern")}
@@ -260,7 +266,7 @@
             {:else if sheets}
               <div class="flex flex-wrap gap-1.5" role="group" aria-label={t("ui.editor.file.sheets_found")}>
                 {#each sheets as name (name)}
-                  <button type="button" class="chip-toggle" aria-pressed={listOpt(f.key).includes(name)} onclick={() => toggleSheet(f.key, name)}>{name}</button>
+                  <button type="button" class="chip-toggle" aria-pressed={selectedSheet(f.key, name) !== null} onclick={() => toggleSheet(f.key, name)}>{name}</button>
                 {/each}
               </div>
             {/if}

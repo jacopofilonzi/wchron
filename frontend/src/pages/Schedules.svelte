@@ -2,6 +2,7 @@
   // Schedules: the list (enable toggle, when, recipients, next run, last
   // result; open, duplicate, delete) or, under #/schedules/<id>, the editor.
   import ConfirmDialog from "../components/ConfirmDialog.svelte";
+  import Icon from "../components/Icon.svelte";
   import Toggle from "../components/Toggle.svelte";
   import ScheduleEditor from "./ScheduleEditor.svelte";
   import { api, onRunFinished, onSchedulesChanged, type AppError, type ScheduleSummary } from "../lib/api";
@@ -102,8 +103,7 @@
       <h1 class="page-title">{t("ui.schedules.title")}</h1>
       {#if list && list.length > 0}
         <p class="m-0 mt-1 text-[13px] text-muted">
-          {t("ui.schedules.count", { count: String(list.length) })}{#if next}
-            · {t("ui.schedules.next_send", { when: when(next.at) })}{/if}
+          {list.length === 1 ? t("ui.schedules.count.one") : t("ui.schedules.count", { count: String(list.length) })}{#if next}{" · "}{t("ui.schedules.next_send", { when: when(next.at) })}{/if}
         </p>
       {/if}
     </div>
@@ -132,7 +132,7 @@
     <div class="card overflow-hidden text-[13px]" role="table" aria-label={t("ui.schedules.list")}>
       <div
         role="row"
-        class="grid grid-cols-[48px_1.5fr_1.3fr_1.2fr_110px_1.4fr_auto] gap-3 border-b border-divider px-4 py-2.5 text-[12px] text-muted"
+        class="grid grid-cols-[44px_minmax(0,1.5fr)_minmax(0,1.3fr)_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,1.5fr)_64px] gap-3 border-b border-divider px-4 py-2.5 text-[12px] text-muted"
       >
         <span role="columnheader"><span class="sr-only">{t("ui.schedules.col.enabled")}</span></span>
         <span role="columnheader">{t("ui.schedules.col.name")}</span>
@@ -148,7 +148,7 @@
         {@const res = results[s.last_result]}
         <div
           role="row"
-          class="grid grid-cols-[48px_1.5fr_1.3fr_1.2fr_110px_1.4fr_auto] items-center gap-3 border-b border-divider px-4 py-3.5 last:border-b-0"
+          class="grid grid-cols-[44px_minmax(0,1.5fr)_minmax(0,1.3fr)_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,1.5fr)_64px] items-center gap-3 border-b border-divider px-4 py-3.5 last:border-b-0"
         >
           <span role="cell">
             <Toggle
@@ -158,11 +158,12 @@
             />
           </span>
           <div role="cell" class="min-w-0">
-            <a class="block truncate font-medium text-text no-underline hover:underline {sc.enabled ? '' : 'text-muted'}" href={href("schedules", sc.id)}>{sc.name}</a>
+            <a aria-label={t("ui.schedules.open_named", { name: sc.name })}
+              class="block truncate font-medium text-text no-underline hover:underline {sc.enabled ? '' : 'text-muted'}" href={href("schedules", sc.id)}>{sc.name}</a>
             <div class="mt-0.5 truncate text-[12px] text-muted">{filesSummary(s)}</div>
           </div>
           <div role="cell" class="min-w-0 {sc.enabled ? 'text-text-soft' : 'text-muted'}">
-            <div class="truncate">{cadenceSummary(sc.cadence)}</div>
+            <div class="truncate" title={cadenceSummary(sc.cadence)}>{cadenceSummary(sc.cadence)}</div>
             <div class="truncate text-[12px] text-muted">{daysSummary(sc.cadence.days ?? [])}</div>
           </div>
           <div role="cell" class="min-w-0">
@@ -192,14 +193,21 @@
               <span class="text-muted">{t("ui.schedules.result.never")}</span>
             {/if}
           </div>
-          <div role="cell" class="flex gap-1">
-            <a class="btn no-underline" href={href("schedules", sc.id)} aria-label={t("ui.schedules.open_named", { name: sc.name })}>{t("ui.schedules.open")}</a>
-            <button type="button" class="btn" aria-label={t("ui.schedules.duplicate_named", { name: sc.name })} onclick={() => duplicate(s)}>
-              {t("ui.schedules.duplicate")}
-            </button>
-            <button type="button" class="btn" aria-label={t("ui.schedules.delete_named", { name: sc.name })} onclick={() => (confirmDelete = s)}>
-              {t("ui.schedules.delete")}
-            </button>
+          <div role="cell" class="flex justify-end gap-0.5">
+            <button
+              type="button"
+              class="icon-btn"
+              aria-label={t("ui.schedules.duplicate_named", { name: sc.name })}
+              title={t("ui.schedules.duplicate")}
+              onclick={() => duplicate(s)}><Icon name="copy" /></button
+            >
+            <button
+              type="button"
+              class="icon-btn hover:text-danger"
+              aria-label={t("ui.schedules.delete_named", { name: sc.name })}
+              title={t("ui.schedules.delete")}
+              onclick={() => (confirmDelete = s)}><Icon name="trash" /></button
+            >
           </div>
           {#if rowErrors[sc.id]}
             <p role="alert" class="col-span-full m-0 text-danger">{tError(rowErrors[sc.id]!.code, { schedule: sc.name, ...rowErrors[sc.id]!.params })}</p>
