@@ -109,6 +109,9 @@ type Channel struct {
 	Targets []provider.Target
 	// SendErr makes Send fail after recording.
 	SendErr error
+	// OnSend, when set, runs after recording and outside the lock (to block,
+	// observe concurrency or fail one send); its error replaces SendErr.
+	OnSend func(target json.RawMessage, msg provider.Message) error
 	// PairEvents replaces the default pairing steps; a nil entry blocks
 	// until the pairing is cancelled.
 	PairEvents []*provider.PairEvent
@@ -195,9 +198,13 @@ func (c *Channel) ListTargets(context.Context) ([]provider.Target, error) {
 
 func (c *Channel) Send(_ context.Context, target json.RawMessage, msg provider.Message) error {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.Sends = append(c.Sends, Sent{Target: target, Msg: msg})
-	return c.SendErr
+	err, on := c.SendErr, c.OnSend
+	c.mu.Unlock()
+	if on != nil {
+		return on(target, msg)
+	}
+	return err
 }
 
 // StartPairing plays PairEvents (default: a code, then success).

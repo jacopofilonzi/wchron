@@ -132,6 +132,11 @@ type Options struct {
 	AfterFunc func(d time.Duration, f func()) (stop func() bool)
 	// NewID returns a new channel id; nil is 16 random hex characters.
 	NewID func() string
+	// SendPause draws the pause between two sends on the same channel; nil
+	// is uniform in [SendPauseMin, SendPauseMax].
+	SendPause func() time.Duration
+	// Sleep waits d or until ctx is done (the send pauses); nil uses a timer.
+	Sleep func(ctx context.Context, d time.Duration) error
 }
 
 // Manager owns every configured channel. See the package doc.
@@ -141,6 +146,7 @@ type Manager struct {
 	mu       sync.Mutex
 	notifyMu sync.Mutex // keeps the callbacks in the order of the changes
 	chans    map[string]*managed
+	lanes    map[string]*lane // send serialization by channel id
 	order    []string
 	ctx      context.Context
 	cancel   context.CancelFunc
@@ -174,8 +180,14 @@ func NewManager(o Options) *Manager {
 	if o.NewID == nil {
 		o.NewID = randomID
 	}
+	if o.SendPause == nil {
+		o.SendPause = randomPause
+	}
+	if o.Sleep == nil {
+		o.Sleep = sleepCtx
+	}
 	ctx, cancel := context.WithCancel(context.Background())
-	return &Manager{o: o, chans: map[string]*managed{}, ctx: ctx, cancel: cancel}
+	return &Manager{o: o, chans: map[string]*managed{}, lanes: map[string]*lane{}, ctx: ctx, cancel: cancel}
 }
 
 func randomID() string {
@@ -835,13 +847,8 @@ func (m *Manager) verifyPending(id string) {
 		m.mu.Unlock()
 	}()
 	cfg := m.o.Store.Config()
-	type result struct {
-		verified config.Verified
-		target   json.RawMessage
-		display  string
-	}
 	// Recipient ids are unique only within a list: results go by target.
-	results := map[string]result{}
+	results := map[string]checkResult{}
 	var pending []config.Recipient
 	collect := func(rs []config.Recipient) {
 		for _, r := range rs {
@@ -870,9 +877,9 @@ func (m *Manager) verifyPending(id string) {
 		cancel()
 		switch {
 		case err == nil && chk.Warning == nil:
-			results[key] = result{verified: config.VerifiedYes, target: chk.Target, display: chk.DisplayName}
+			results[key] = checkResult{verified: config.VerifiedYes, target: chk.Target, display: chk.DisplayName}
 		case err != nil && errors.Is(err, ErrTargetInvalid):
-			results[key] = result{verified: config.VerifiedNo}
+			results[key] = checkResult{verified: config.VerifiedNo}
 			m.o.Log.Warn("recipient failed the check: it won't receive anything", "code", string(apperr.RecipientCheckFailed),
 				"channel", id, "recipient", r.ID, "reason", string(apperr.As(err).Code))
 		default:
@@ -883,28 +890,5 @@ func (m *Manager) verifyPending(id string) {
 	if len(results) == 0 {
 		return
 	}
-	apply := func(rs []config.Recipient) {
-		for i := range rs {
-			res, ok := results[string(rs[i].Target)]
-			if !ok || rs[i].ChannelID != id || rs[i].Verified != config.VerifiedUnknown {
-				continue
-			}
-			rs[i].Verified = res.verified
-			if res.target != nil {
-				rs[i].Target = res.target
-			}
-			if res.display != "" {
-				rs[i].DisplayName = res.display
-			}
-		}
-	}
-	if err := m.o.Store.UpdateConfig(func(c *config.Config) error {
-		apply(c.Settings.ErrorRecipients)
-		for i := range c.Schedules {
-			apply(c.Schedules[i].Recipients)
-		}
-		return nil
-	}); err != nil {
-		m.o.Log.Error("save recipient checks", "channel", id, "err", err)
-	}
+	m.storeChecks(id, results)
 }
