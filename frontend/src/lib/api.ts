@@ -2,7 +2,7 @@
 // (nil slices/maps arrive as null) and turns failures into AppError values
 // whose `code` the UI maps to `error.<code>` in the catalog.
 import { Events } from "@wailsio/runtime";
-import { Service, type Snapshot } from "../../bindings/github.com/jacopofilonzi/wchron/internal/app";
+import { Service, type RunEvent, type Snapshot } from "../../bindings/github.com/jacopofilonzi/wchron/internal/app";
 import type { Ref } from "../../bindings/github.com/jacopofilonzi/wchron/internal/apperr";
 import type { Cadence, Theme } from "../../bindings/github.com/jacopofilonzi/wchron/internal/config";
 import type { Lang } from "../../bindings/github.com/jacopofilonzi/wchron/internal/i18n";
@@ -19,7 +19,7 @@ import type {
   Usage,
 } from "../../bindings/github.com/jacopofilonzi/wchron/internal/provider";
 
-export type { Snapshot, Theme, Lang, LogEntry, Cadence };
+export type { Snapshot, Theme, Lang, LogEntry, Cadence, RunEvent };
 export type { ChannelInfo, ChannelStatus, DeleteResult, Field, ProviderInfo, PairingEvent, Target, TargetCheck, Usage };
 export { ChannelsState } from "../../bindings/github.com/jacopofilonzi/wchron/internal/app";
 export { Theme as Themes } from "../../bindings/github.com/jacopofilonzi/wchron/internal/config";
@@ -127,11 +127,25 @@ export const api = {
       return { ...c, warning: normRef(c.warning) };
     }),
   listTargets: (channelID: string) => call(async (): Promise<Target[]> => (await Service.ListTargets(channelID)) ?? []),
+
+  /** Acts for real: runs a schedule now (no days/window/tolerance); `schedule.busy` if it is already running. The outcome arrives through onRunFinished. */
+  sendNow: (scheduleID: string) => call(() => Service.SendNow(scheduleID)),
+  /** Clears the tray's error state; the Status page calls it when it opens. */
+  ackErrors: () => snap(() => Service.AckErrors()),
 };
 
 /** Subscribes to every state change pushed by Go (tray or window); returns the unsubscribe function. */
 export function onState(fn: (s: Snapshot) => void): () => void {
   return Events.On("app:state", (ev) => fn(normSnapshot(ev.data)));
+}
+
+function normRun(r: RunEvent): RunEvent {
+  return { ...r, problems: (r.problems ?? []).map((p) => ({ ...p, params: p.params ?? {} })) };
+}
+
+/** Subscribes to the end of every run (status and problems); returns the unsubscribe function. */
+export function onRunFinished(fn: (r: RunEvent) => void): () => void {
+  return Events.On("run:finished", (ev) => fn(normRun(ev.data)));
 }
 
 /** Subscribes to the pairing steps of every channel (QR codes, result); returns the unsubscribe function. */

@@ -3,8 +3,10 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
+	"github.com/jacopofilonzi/wchron/internal/apperr"
 	"github.com/jacopofilonzi/wchron/internal/clock"
 	"github.com/jacopofilonzi/wchron/internal/config"
 	"github.com/jacopofilonzi/wchron/internal/i18n"
@@ -28,6 +30,28 @@ const (
 	EventChannelQR     = "channel:qr"
 )
 
+// EventRunStarted and EventRunFinished bracket every run (RunEvent); the
+// finished one carries the status and the problems.
+const (
+	EventRunStarted  = "run:started"
+	EventRunFinished = "run:finished"
+)
+
+// RunEvent is a run as the GUI sees it.
+type RunEvent struct {
+	ScheduleID   string `json:"schedule_id"`
+	ScheduleName string `json:"schedule_name"`
+	Manual       bool   `json:"manual"`
+	// Status is "" for run:started, a state.Result* value for run:finished.
+	Status   string       `json:"status"`
+	Problems []apperr.Ref `json:"problems"`
+}
+
+// Runs starts manual runs (scheduler.Scheduler).
+type Runs interface {
+	RunNow(id, name string) error
+}
+
 // channelCallTimeout bounds the calls that ask the service (target check,
 // group list).
 const channelCallTimeout = 30 * time.Second
@@ -39,6 +63,8 @@ func init() {
 	application.RegisterEvent[Snapshot](EventState)
 	application.RegisterEvent[provider.ChannelInfo](EventChannelStatus)
 	application.RegisterEvent[provider.PairingEvent](EventChannelQR)
+	application.RegisterEvent[RunEvent](EventRunStarted)
+	application.RegisterEvent[RunEvent](EventRunFinished)
 }
 
 // Service is the Wails service bound to the frontend. Each method returns the
@@ -47,17 +73,36 @@ type Service struct {
 	store    *Store
 	channels *provider.Manager
 	registry *provider.Registry
+	runs     Runs
 	logsDir  string
 	clock    clock.Clock
 	loc      *time.Location // time.Local; tests set Europe/Rome
 }
 
-// NewService wraps the store and the channel manager for the bindings;
-// logsDir is where Logs reads, clk the source of "now" for the previews
-// (clock.Real in the app).
-func NewService(st *Store, reg *provider.Registry, channels *provider.Manager, logsDir string, clk clock.Clock) *Service {
-	return &Service{store: st, registry: reg, channels: channels, logsDir: logsDir, clock: clk, loc: time.Local}
+// NewService wraps the store, the channel manager and the scheduler (runs)
+// for the bindings; logsDir is where Logs reads, clk the source of "now" for
+// the previews (clock.Real in the app).
+func NewService(st *Store, reg *provider.Registry, channels *provider.Manager, runs Runs, logsDir string, clk clock.Clock) *Service {
+	return &Service{store: st, registry: reg, channels: channels, runs: runs, logsDir: logsDir, clock: clk, loc: time.Local}
 }
+
+// SendNow runs a schedule at once ("send now"), enabled or not, ignoring its
+// days, window and tolerance. It returns when the run has started; the
+// outcome arrives as EventRunFinished, a toast if there are problems (never a
+// message to the error recipients) and the schedule's state. A run of the
+// same schedule in progress refuses it (schedule.busy); schedule.not_found
+// if it was deleted. Acts for real: it sends to the schedule's recipients.
+func (s *Service) SendNow(id string) error {
+	for _, sc := range s.store.Schedules() {
+		if sc.ID == id {
+			return s.runs.RunNow(sc.ID, sc.Name)
+		}
+	}
+	return apperr.New(apperr.ScheduleNotFound, fmt.Errorf("schedule %q not found", id)).With("id", id)
+}
+
+// AckErrors clears the tray's error state; the Status page calls it when it opens.
+func (s *Service) AckErrors() Snapshot { return s.store.AckErrors() }
 
 // State returns the current state.
 func (s *Service) State() Snapshot { return s.store.Snapshot() }

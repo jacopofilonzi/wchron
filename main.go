@@ -5,14 +5,17 @@
 // exits a second instance right away (after notifying the first one), so
 // nothing with side effects may run before it. Then: dev env overrides →
 // data dir paths → log file → config.json and state.json (startup.Open:
-// load, backup, migrate, save) → Store → channel manager, service, window,
-// tray → Run; the scheduler and the channels start when the application has
-// started; on quit the scheduler stops first, then the channels close. A
+// load, backup, migrate, save) → Store → channel manager, toaster, notifier,
+// pipeline, scheduler, service, window, tray → Run; the toasts, the temp
+// cleanup, the scheduler and the channels start when the application has
+// started; on quit the scheduler stops first (cancelling the runs between two
+// sends), then the channels close. A
 // fatal error shows a native error dialog in the user's language and exits
 // with code 1 without touching the data.
 package main
 
 import (
+	"context"
 	"embed"
 	"io"
 	"log/slog"
@@ -27,12 +30,17 @@ import (
 	"github.com/jacopofilonzi/wchron/internal/devenv"
 	"github.com/jacopofilonzi/wchron/internal/i18n"
 	"github.com/jacopofilonzi/wchron/internal/logging"
+	"github.com/jacopofilonzi/wchron/internal/notify"
+	"github.com/jacopofilonzi/wchron/internal/pipeline"
 	"github.com/jacopofilonzi/wchron/internal/platform"
+	"github.com/jacopofilonzi/wchron/internal/processor"
+	"github.com/jacopofilonzi/wchron/internal/processor/passthrough"
 	"github.com/jacopofilonzi/wchron/internal/provider"
 	"github.com/jacopofilonzi/wchron/internal/provider/whatsapp"
 	"github.com/jacopofilonzi/wchron/internal/scheduler"
 	"github.com/jacopofilonzi/wchron/internal/startup"
 	"github.com/jacopofilonzi/wchron/internal/state"
+	"github.com/jacopofilonzi/wchron/internal/toast"
 	"github.com/jacopofilonzi/wchron/internal/tray"
 	"github.com/jacopofilonzi/wchron/internal/version"
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -188,7 +196,6 @@ func main() {
 		// The update check arrives with milestone 10.
 		OnOutdated: func(id string) { log.Warn("channel rejected as outdated: an update is needed", "channel", id) },
 	})
-	wails.RegisterService(application.NewService(app.NewService(store, registry, chans, paths.LogsDir(), clock.Real{})))
 
 	window = wails.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "wchron",
@@ -209,11 +216,45 @@ func main() {
 	store.Subscribe(func(s app.Snapshot) { wails.Event.Emit(app.EventState, s) })
 	tray.New(wails, store, log, showWindow)
 
-	// No pipeline yet (milestone 6): runs are only logged (DryRunner).
+	// Clicking a toast opens the window on the Status page.
+	toaster := toast.New(log, func() {
+		application.InvokeAsync(func() {
+			showWindow()
+			window.ExecJS(`location.hash = "#/status"`)
+		})
+	})
+	notifier := notify.New(notify.Options{Toaster: toaster, Sender: chans, Store: store, Clock: clock.Real{}, Location: time.Local, Log: log})
+	runEvent := func(job scheduler.Job, res scheduler.Result) app.RunEvent {
+		ev := app.RunEvent{ScheduleID: job.ScheduleID, ScheduleName: job.ScheduleName, Manual: job.Manual, Status: res.Status,
+			Problems: []apperr.Ref{}}
+		for _, p := range res.Problems {
+			ev.Problems = append(ev.Problems, *apperr.RefOf(p))
+		}
+		return ev
+	}
+	pipe := pipeline.New(pipeline.Options{
+		Store:    store,
+		Channels: chans,
+		// The processors: the only place that names them (AGENTS.md "Adding a processor").
+		Processors: processor.NewRegistry(passthrough.New()),
+		Reporter:   notifier,
+		Clock:      clock.Real{},
+		Location:   time.Local,
+		TempDir:    paths.TempDir(),
+		Log:        log,
+		OnStart: func(job scheduler.Job) {
+			store.RunStarted(job.ScheduleID)
+			wails.Event.Emit(app.EventRunStarted, runEvent(job, scheduler.Result{}))
+		},
+		OnFinish: func(job scheduler.Job, res scheduler.Result) {
+			store.RunFinished(job.ScheduleID, res.Status)
+			wails.Event.Emit(app.EventRunFinished, runEvent(job, res))
+		},
+	})
 	sched = scheduler.New(scheduler.Options{
 		Clock:    clock.Real{},
 		Location: time.Local,
-		Runner:   scheduler.DryRunner{Clock: clock.Real{}, Log: log},
+		Runner:   pipe,
 		Store:    store,
 		Log:      log,
 		OnNext: func(n *scheduler.NextRun) {
@@ -224,7 +265,13 @@ func main() {
 			store.SetNextRun(&app.NextRun{ScheduleID: n.ScheduleID, ScheduleName: n.ScheduleName, At: n.At})
 		},
 	})
+	wails.RegisterService(application.NewService(app.NewService(store, registry, chans, sched, paths.LogsDir(), clock.Real{})))
 	wails.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		// On the main thread, like a registered service's startup: it registers
+		// the toast activator with COM.
+		application.InvokeSync(func() { toaster.Start(context.Background()) })
+		// No run is in progress yet: what is in %TEMP%\wchron is a crash's leftover.
+		pipe.CleanTemp()
 		sched.Reload(store.Schedules())
 		sched.Start()
 		// After the startup backup (startup.Open), never before: it copies

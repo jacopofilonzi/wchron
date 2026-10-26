@@ -19,7 +19,7 @@ import (
 func TestPreviewTokens(t *testing.T) {
 	st := newStore(&fakeInhibitor{}, &fakeAutostart{}, false)
 	clk := clock.NewFake(time.Date(2026, 10, 26, 9, 0, 0, 0, time.UTC))
-	svc := NewService(st, provider.NewRegistry(), nil, t.TempDir(), clk)
+	svc := NewService(st, provider.NewRegistry(), nil, nil, t.TempDir(), clk)
 
 	got, err := svc.PreviewTokens("{date-1d:dddd DD MMMM}")
 	if err != nil || got != "domenica 25 ottobre" {
@@ -46,7 +46,7 @@ func TestPreviewRuns(t *testing.T) {
 		t.Fatal(err)
 	}
 	st := newStore(&fakeInhibitor{}, &fakeAutostart{}, false)
-	svc := NewService(st, provider.NewRegistry(), nil, t.TempDir(), clock.NewFake(time.Date(2026, 10, 24, 23, 0, 0, 0, loc)))
+	svc := NewService(st, provider.NewRegistry(), nil, nil, t.TempDir(), clock.NewFake(time.Date(2026, 10, 24, 23, 0, 0, 0, loc)))
 	svc.loc = loc
 	c := config.Cadence{Mode: config.CadenceInterval, Interval: config.Interval{Hours: 1}, Days: []config.Weekday{"sun"}}
 	got, err := svc.PreviewRuns(c, 0)
@@ -80,7 +80,7 @@ func TestChannelBindings(t *testing.T) {
 		OnPairing: func(p provider.PairingEvent) { events = append(events, p) }})
 	defer mgr.Close()
 	mgr.Start()
-	svc := NewService(st, reg, mgr, t.TempDir(), clock.Real{})
+	svc := NewService(st, reg, mgr, nil, t.TempDir(), clock.Real{})
 
 	if ps := svc.Providers(); len(ps) != 1 || ps[0].Type != fake.Type || !ps[0].Capabilities.Pairing {
 		t.Fatalf("providers: %+v", ps)
@@ -120,5 +120,67 @@ func TestChannelBindings(t *testing.T) {
 	if res, err := svc.DeleteChannel(info.ID); err != nil || !res.LoggedOut || len(svc.ListChannels()) != 0 ||
 		st.Snapshot().Channels != ChannelsNone || len(st.Config().Channels) != 0 {
 		t.Fatalf("delete: %+v %v", res, err)
+	}
+}
+
+type fakeRuns struct {
+	calls []string
+	err   error
+}
+
+func (f *fakeRuns) RunNow(id, name string) error {
+	f.calls = append(f.calls, id+" "+name)
+	return f.err
+}
+
+func TestSendNow(t *testing.T) {
+	cfg := config.Default()
+	cfg.Schedules = []config.Schedule{{ID: "s", Name: "Sales"}}
+	st := NewStore(Deps{Inhibitor: &fakeInhibitor{}, Autostart: &fakeAutostart{}, Config: cfg})
+	runs := &fakeRuns{}
+	svc := NewService(st, provider.NewRegistry(), nil, runs, t.TempDir(), clock.Real{})
+	if err := svc.SendNow("s"); err != nil || len(runs.calls) != 1 || runs.calls[0] != "s Sales" {
+		t.Fatalf("send now: %v %v", err, runs.calls)
+	}
+	runs.err = apperr.New(apperr.ScheduleBusy, nil)
+	if err := svc.SendNow("s"); apperr.As(err).Code != apperr.ScheduleBusy {
+		t.Fatalf("busy: %v", err)
+	}
+	if err := svc.SendNow("x"); apperr.As(err).Code != apperr.ScheduleNotFound {
+		t.Fatalf("missing: %v", err)
+	}
+}
+
+func TestRunStateAndAck(t *testing.T) {
+	st := newStore(&fakeInhibitor{}, &fakeAutostart{}, false)
+	var snaps []Snapshot
+	st.Subscribe(func(s Snapshot) { snaps = append(snaps, s) })
+	st.RunStarted("a")
+	st.RunStarted("b")
+	if s := st.Snapshot(); !s.Sending || s.RunError {
+		t.Fatalf("running: %+v", s)
+	}
+	st.RunFinished("a", "failed")
+	if s := st.Snapshot(); !s.Sending || !s.RunError {
+		t.Fatalf("a failed, b running: %+v", s)
+	}
+	st.RunFinished("b", "skipped")
+	if s := st.Snapshot(); s.Sending || !s.RunError {
+		t.Fatalf("all done: %+v", s)
+	}
+	// a succeeds again: the error goes.
+	st.RunStarted("a")
+	st.RunFinished("a", "ok")
+	if s := st.Snapshot(); s.RunError {
+		t.Fatal("error state must clear when the schedule succeeds again")
+	}
+	// Ack clears it too.
+	st.RunStarted("a")
+	st.RunFinished("a", "partial")
+	if s := st.AckErrors(); s.RunError {
+		t.Fatal("ack must clear the error state")
+	}
+	if len(snaps) == 0 || snaps[len(snaps)-1].RunError {
+		t.Fatal("listeners must see the ack")
 	}
 }

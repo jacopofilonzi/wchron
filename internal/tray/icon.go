@@ -78,11 +78,17 @@ func Icon(state State, keepAwake bool) []byte {
 	return buf.Bytes()
 }
 
-// stateFor picks the icon state. Paused wins over disconnected: when the user
-// paused the routine nothing is due to be sent, so the connection is secondary.
-// Sending and error will come from the pipeline (milestone 6).
-func stateFor(routineActive, connected bool) State {
+// stateFor picks the icon state. Sending wins (it is live, and a "send now"
+// can run while paused), then a failed run not yet seen (it stays until that
+// schedule succeeds again or the Status page is opened), then paused over
+// disconnected: when the user paused the routine nothing is due to be sent,
+// so the connection is secondary.
+func stateFor(routineActive, connected, sending, runError bool) State {
 	switch {
+	case sending:
+		return StateSending
+	case runError:
+		return StateError
 	case !routineActive:
 		return StatePaused
 	case !connected:

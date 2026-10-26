@@ -43,17 +43,21 @@ func TestIconsDifferPerStateAndKeepAwake(t *testing.T) {
 
 func TestStateFor(t *testing.T) {
 	cases := []struct {
-		active, connected bool
-		want              State
+		active, connected, sending, runError bool
+		want                                 State
 	}{
-		{true, false, StateDisconnected},
-		{false, false, StatePaused},
-		{true, true, StateActive},
-		{false, true, StatePaused},
+		{true, false, false, false, StateDisconnected},
+		{false, false, false, false, StatePaused},
+		{true, true, false, false, StateActive},
+		{false, true, false, false, StatePaused},
+		{true, true, true, true, StateSending},
+		{false, false, true, false, StateSending},
+		{true, true, false, true, StateError},
+		{false, false, false, true, StateError},
 	}
 	for _, c := range cases {
-		if got := stateFor(c.active, c.connected); got != c.want {
-			t.Errorf("stateFor(%v, %v) = %v, want %v", c.active, c.connected, got, c.want)
+		if got := stateFor(c.active, c.connected, c.sending, c.runError); got != c.want {
+			t.Errorf("stateFor(%+v) = %v, want %v", c, got, c.want)
 		}
 	}
 }

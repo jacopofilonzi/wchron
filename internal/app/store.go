@@ -29,6 +29,11 @@
 // is only logged, like the pause), and NextRun, the earliest upcoming run the
 // scheduler reports, which is part of the Snapshot (tray status line,
 // EventState).
+//
+// Runs (from the pipeline): RunStarted/RunFinished keep Snapshot.Sending
+// (any run in progress) and Snapshot.RunError: set when a schedule's run
+// fails or sends only in part, cleared when that schedule succeeds again or
+// when the user opens the Status page (AckErrors). The tray shows them.
 package app
 
 import (
@@ -76,6 +81,12 @@ type Snapshot struct {
 	// NextRun is the earliest upcoming scheduled run; null when no enabled
 	// schedule has one. It is shown even while the routine is paused.
 	NextRun *NextRun `json:"next_run"`
+	// Sending is true while any run is in progress (tray: sending).
+	Sending bool `json:"sending"`
+	// RunError is true while a schedule whose last run failed (or sent only
+	// in part) hasn't succeeded again, until the user opens the Status page
+	// (AckErrors). Tray: error.
+	RunError bool `json:"run_error"`
 }
 
 // NextRun is a schedule's next slot (without jitter), in local time.
@@ -109,6 +120,8 @@ type Store struct {
 	st        state.State
 	d         Deps
 	listeners []func(Snapshot)
+	running   map[string]int  // schedule id → runs in progress
+	failing   map[string]bool // schedules whose last run failed, not acknowledged
 }
 
 // NewStore builds the state from the loaded data. It has no side effects:
@@ -135,9 +148,11 @@ func NewStore(d Deps) *Store {
 			ChannelList:      []provider.ChannelInfo{},
 			Version:          version.Version,
 		},
-		cfg: d.Config,
-		st:  d.State,
-		d:   d,
+		cfg:     d.Config,
+		st:      d.State,
+		d:       d,
+		running: map[string]int{},
+		failing: map[string]bool{},
 	}
 }
 
@@ -451,6 +466,48 @@ func sameNextRun(a, b *NextRun) bool {
 		return a == b
 	}
 	return a.ScheduleID == b.ScheduleID && a.ScheduleName == b.ScheduleName && a.At.Equal(b.At)
+}
+
+// RunStarted records a run in progress (pipeline OnStart).
+func (st *Store) RunStarted(id string) {
+	_, _ = st.update(func(s *Snapshot) (bool, error) {
+		st.running[id]++
+		s.Sending = true
+		return true, nil
+	})
+}
+
+// RunFinished records the end of a run and its status (pipeline OnFinish):
+// failed or partial marks the schedule as failing, ok clears it; skips leave
+// it as it is.
+func (st *Store) RunFinished(id, status string) {
+	_, _ = st.update(func(s *Snapshot) (bool, error) {
+		if st.running[id]--; st.running[id] <= 0 {
+			delete(st.running, id)
+		}
+		switch status {
+		case state.ResultFailed, state.ResultPartial:
+			st.failing[id] = true
+		case state.ResultOK:
+			delete(st.failing, id)
+		}
+		s.Sending = len(st.running) > 0
+		s.RunError = len(st.failing) > 0
+		return true, nil
+	})
+}
+
+// AckErrors clears the tray's error state: the user has seen the Status page.
+func (st *Store) AckErrors() Snapshot {
+	s, _ := st.update(func(s *Snapshot) (bool, error) {
+		if len(st.failing) == 0 && !s.RunError {
+			return false, nil
+		}
+		clear(st.failing)
+		s.RunError = false
+		return true, nil
+	})
+	return s
 }
 
 // Shutdown releases keep-awake. Windows drops it anyway when the process

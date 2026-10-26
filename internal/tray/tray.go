@@ -12,7 +12,9 @@
 // the bottom right: active green, paused grey, sending cyan, error red,
 // channels disconnected (or none configured) purple (not amber: it would read
 // as the logo's orange); plus a yellow dot at the top right when keep-awake is
-// on. The icon is drawn at run time and replaced on every state change.
+// on. Sending (any run in progress) and error (a failed run, until that
+// schedule succeeds again or the Status page is opened) come from the
+// Snapshot (app.Store.RunStarted/RunFinished/AckErrors). The icon is drawn at run time and replaced on every state change.
 //
 // Every toggle goes through app.Store, and the tray redraws from the Store's
 // snapshots only, so the menu, the icon and the window never disagree. A
@@ -82,7 +84,6 @@ func New(wails *application.App, store *app.Store, log *slog.Logger, showWindow 
 }
 
 // fail logs a refused toggle and puts the checkboxes back to the real state.
-// keepawake.failed is also meant for a toast: it comes with the Notifier.
 func (t *Tray) fail(what string, err error) {
 	t.log.Error("tray: "+what+" failed", "err", err)
 	t.apply(t.store.Snapshot())
@@ -102,7 +103,7 @@ func (t *Tray) apply(s app.Snapshot) {
 	t.open.SetLabel(i18n.T(l, "tray.open", nil))
 	t.quit.SetLabel(i18n.T(l, "tray.quit", nil))
 
-	st := stateFor(s.RoutineActive, s.Channels == app.ChannelsConnected)
+	st := stateFor(s.RoutineActive, s.Channels == app.ChannelsConnected, s.Sending, s.RunError)
 	tip := i18n.T(l, "tray.tooltip", map[string]string{"state": i18n.T(l, stateKey[st], nil)})
 	if s.KeepAwake {
 		tip = i18n.T(l, "tray.tooltip.keepawake", map[string]string{"tooltip": tip})
