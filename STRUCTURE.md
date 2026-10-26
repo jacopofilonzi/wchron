@@ -7,9 +7,10 @@ Telegram/ntfy possible later without structural changes. One Go process holds th
 pipeline, channels, state); the Svelte GUI in a Wails window talks to it through generated bindings and events.
 
 > Status: milestones 1 (skeleton), 2 (data, logging), 3 (tokens), 4 (scheduler), 5 (providers, WhatsApp),
-> 6 (pipeline, resolver, passthrough, notifications) and 7 (values-only Excel processor, send names) are in
-> place; the rest of this file is the planned layout.
-> Packages and files that exist today are marked **(m1)** … **(m7)**. Update this file as each milestone lands.
+> 6 (pipeline, resolver, passthrough, notifications), 7 (values-only Excel processor, send names) and 8 (GUI:
+> schedules list and editor, recipients, previews, status and log, error recipients, e2e) are in place; the
+> rest of this file is the planned layout.
+> Packages and files that exist today are marked **(m1)** … **(m8)**. Update this file as each milestone lands.
 
 ## Milestones
 
@@ -27,7 +28,9 @@ pipeline, channels, state); the Svelte GUI in a Wails window talks to it through
 - [x] 7. `xlsx-snapshot` processor ("values only": no formulas, no macros, chosen sheets, .xlsx) with tests
       on synthetic workbooks (formulas, missing sheet, locked file, no cached values); `send_name` for every
       file spec; `ReadSheets`.
-- [ ] 8. GUI screens (channels page, recipient picker), previews, delete confirmations, error recipients.
+- [x] 8. GUI screens: schedules list and editor (cadence, recipients with the provider's picker, caption,
+      files with previews, Excel options, send names numbered for "all"), status and log, error recipients,
+      data folder; schedule bindings with field-addressed validation; Playwright e2e on a fake backend.
 - [ ] 9. Hardening: reconnection, installer, release workflow (log rotation landed with milestone 2).
 - [ ] 10. Update notification and self-update.
 
@@ -41,7 +44,9 @@ wchron/
 │                       (m6) toaster, notifier, processor registry (the only place naming the processors),
 │                       pipeline (the scheduler's Runner; OnStart/OnFinish → Store + run events); on
 │                       ApplicationStarted: toasts (main thread), temp cleanup, scheduler, channels;
-│                       (m7) xlsxsnapshot registered next to passthrough, its ReadSheets given to the service
+│                       (m7) xlsxsnapshot registered next to passthrough, its ReadSheets given to the service;
+│                       (m8) app.Configure: processors, data/backups dirs, the schedule-change hook (scheduler
+│                       Reload + schedules:changed, also after a channel delete), platform.OpenFolder
 ├── internal/           Go (go.mod: 1.26, toolchain 1.27) — core and platform layer (see below)
 ├── locales/            it.json, en.json (shared i18n catalog, flat namespaced keys) + embed.go (m1)
 ├── frontend/           Svelte 5 + TS + Vite + Tailwind 4 — GUI
@@ -67,7 +72,9 @@ internal/
 │                   subscribers) + Service (the Wails bindings) + events; (m5) the Store is the channel
 │                   manager's ConfigStore and holds the channel list; channel bindings and events;
 │                   (m6) runs in progress / failing schedules (Snapshot sending, run_error), SendNow,
-│                   AckErrors, run events
+│                   AckErrors, run events; (m8) schedules.go (list, get, save, duplicate, delete, enable,
+│                   previews), validate.go (field-addressed problems, design in its doc), settings.go (error
+│                   recipients, folders, last backup), history.go (run history read from the log)
 ├── apperr/         (m1) Error{Code, Params, Err}, codes.go (registry mirrored by ERRORS.md), JSON `{code, params}`
 ├── clock/          (m3) Clock interface (Now), Real, Fake (Set/Advance) for tests
 ├── config/         (m2) config.json: types, defaults, normalization, structural validation, atomic save,
@@ -76,7 +83,7 @@ internal/
 │                   migrations.go, Quarantine of a corrupt file; (m6) problems, partial, notified_signature/_at
 ├── migrate/        (m2) shared migration framework: append-only steps on the raw JSON, schema_version
 ├── fsutil/         (m2) atomic write (temp + fsync + rename), file/tree copy
-├── backup/         (m2) Needed (when), Create (copy to backups/), Prune (keep the 10 most recent)
+├── backup/         (m2) Needed (when), Create (copy to backups/), Prune (keep the 10 most recent); (m8) Latest
 ├── startup/        (m2) Open: load → backup → quarantine → save migrated files → last_app_version; FatalText
 ├── devenv/         (m2) reads the dev-only env overrides (devenv.invalid on a bad value)
 ├── logging/        (m2) slog: JSON lines in logs/wchron.log (lumberjack: 5 MB × 5 files) + stderr text in
@@ -98,10 +105,11 @@ internal/
 │                   only (case-insensitive), match error | newest | all; Open (shared read, file.locked /
 │                   file.unreadable), Validate for the editor (filespec.*). Design in the package doc;
 │                   (m7) sendname.go: SendName / ValidateSendName (token template, extension appended,
-│                   Windows name rules, filespec.send_name_invalid)
+│                   Windows name rules, filespec.send_name_invalid); (m8) SendNameNumbered: " (n)" when a
+│                   custom name meets several matches of one spec
 ├── processor/      (m6) Processor interface (Type, OptionsSchema, Validate, Process → Output + cleanup), Env,
 │   │               Registry (processor.unknown), Schemas; design in the package doc; (m7) Extensions (empty:
-│   │               any file), Field.Tokens, Schema.extensions
+│   │               any file), Field.Tokens, Schema.extensions; (m8) OutputName (send name preview)
 │   ├── passthrough/ (m6) "Original": temp copy of the original (Copy, also for other processors); no options
 │   └── xlsxsnapshot/ (m7) "Values only" (type xlsx-snapshot, excelize): formulas → cached values (never
 │                   recalculated), chosen sheets (`sheets`, tokens, empty = all), macros removed, always .xlsx;
@@ -124,7 +132,8 @@ internal/
 ├── pipeline/       (m6) one run (scheduler.Runner): resolve + process every file once, slot.late before the first
 │                   send, each recipient all files in order (channels in parallel), captions, capability and
 │                   recipient checks, result ok | partial | failed | skipped, report to notify, temp cleanup,
-│                   CleanTemp at startup. Design in the package doc; (m7) send names, xlsx warnings
+│                   CleanTemp at startup. Design in the package doc; (m7) send names, xlsx warnings;
+│                   (m8) numbered send names, "run finished" log line with name and error (run history)
 ├── notify/         (m6) report fan-out: toast + text to each error recipient; Signature, 6 h repeat, "works
 │                   again" notice, notify.failed; manual runs toast only. Design in the package doc
 ├── toast/          (m6) notify.Toaster over the Wails notifications service (started by hand, never fatal;
@@ -137,7 +146,8 @@ internal/
 │                   error states from the Snapshot (sending > error > paused > disconnected > active)
 └── platform/       interfaces + _windows.go / _other.go: SleepInhibitor, Autostart (m1); Paths (data dir
                     layout, Ensure → storage.unavailable), FatalDialog (MessageBoxW) (m2); (m6) files.go:
-                    OpenShared (read, sharing read/write/delete), IsLocked, OpenExclusive (tests); later
+                    OpenShared (read, sharing read/write/delete), IsLocked, OpenExclusive (tests); (m8)
+                    OpenFolder (Explorer); later
                     Protect/Unprotect (DPAPI, for channel secrets: with the first provider that has one).
                     Single instance is Wails' SingleInstance option (in main.go).
 ```
@@ -182,11 +192,28 @@ Excel (m7): `ReadSheets(pathPattern)` resolves the pattern now (tokens for now, 
 takes the newest match) and returns the workbook's sheet names in workbook order, without macro sheets
 (`filespec.*`, `token.*`, `file.*`, `xlsx.not_xlsx`, `xlsx.open_failed`). The reader is set from main.go
 with `app.SetSheetReader` (a plain function: exported `Service` methods become bindings).
-Planned surface (names final at implementation): schedules CRUD (`ListSchedules`, `SaveSchedule`,
-`DeleteSchedule`: they validate with `scheduler.Validate`, `resolver.Validate`, `resolver.ValidateSendName`
-and the processors' `Validate`, check new recipients with `ValidateTarget` and call `Scheduler.Reload`),
-settings get/save,
-`CheckUpdate`, `ProcessorSchemas` (`processor.Registry.Schemas`).
+Schedules (m8): `ListSchedules()` (`ScheduleSummary` `{schedule, last_result, last_error, last_run_at,
+next_run, invalid}`: next run from now, null when disabled or invalid), `GetSchedule(id)`, `NewSchedule()`
+(defaults, empty id), `NewFileSpec()`, `NewRecipientID()`, `SaveSchedule(schedule)` → `SaveResult`
+`{schedule | null, problems: [{field, code, params}]}` (validate.go: cadence via `scheduler.Validate`,
+recipients (`recipient.required`, `recipient.channel_missing`, `recipient.duplicate`), caption and per-file
+captions (`token.*`), files (`schedule.no_files`, `resolver.Render`, `processor.*` incl.
+`processor.extension_unsupported`, `resolver.ValidateSendName`), `schedule.name_required`; fields like
+`cadence.window`, `recipients.<id>`, `files.<id>.path_pattern`; empty id = new, appended), `DuplicateSchedule(id)`
+(after the original, disabled, `schedule.copy_name`), `DeleteSchedule(id)` (permanent, also its state.json
+entry), `SetScheduleEnabled(id, on)` (turning on validates: first problem as the error). Every change: atomic
+save through `Store.UpdateConfig` (`config.write_failed`), then the `Changed` hook. Recipients are checked by the
+GUI's picker with `ValidateTarget` when added; the save trusts their `verified`.
+Previews (m8): `ProcessorSchemas()` (`processor.Registry.Schemas`), `PreviewFiles(pattern, match)`
+(`FilePreview` `{path, files: [{name, size, mod_time}], error}`: problems as data), `PreviewSendName(template,
+pattern, match, processor)` (the names a run would send now, `resolver.SendNameNumbered` + `OutputName`).
+Settings (m8): `ErrorRecipients()`, `SaveErrorRecipients(list)` (problems under `error_recipients.<id>`),
+`DataDir()`, `OpenDataDir()`, `OpenLogsDir()` (`folder.open_failed`), `LastBackup()` (RFC 3339 or null).
+Status (m8): `RunHistory(limit)` (0 = 50, max 500) → `RunRecord` `{time, schedule_id, schedule_name, manual,
+status, sent, planned, error}` read from the log lines "pipeline: run finished", "pipeline: run skipped, too
+late…", "scheduler: slot skipped", "scheduler: slots skipped while paused" (history.go: keep their attributes).
+Wiring setters are plain functions: `app.SetSheetReader`, `app.Configure(svc, Extras{…})`.
+Planned: `CheckUpdate`.
 Errors come back as `apperr.Error` serialized as `{code, params}`.
 
 Events (backend → frontend): `app:state` (m1: full Snapshot after every change, from the window or the
@@ -194,7 +221,7 @@ tray; replaces the planned `routine:toggled`; m4: also when the next run changes
 `schedule:next` event), (m5) `channel:status` (the `ChannelInfo` that changed) and `channel:qr` (pairing steps
 `{channel_id, kind: code|success|timeout|failed|cancelled, code, error}`),
 (m6) `run:started` and `run:finished` (`RunEvent` `{schedule_id, schedule_name, manual, status, problems}`;
-`status` "" when started),
+`status` "" when started), (m8) `schedules:changed` (`{id}`, "" when several: the list reloads),
 `update:available`.
 
 ### Data and state
@@ -308,7 +335,8 @@ log, Channels, Settings) with the channels state and the routine toggle at its b
 22 px title plus white cards/tables on a light grey ground. Themes: light, dark and system (follows
 Windows), all from the semantic tokens in `app.css`, switched by `data-theme` on `<html>`. Svelte 5
 runes, TypeScript strict, Tailwind 4 (`@tailwindcss/vite`), Inter from `@fontsource-variable/inter`.
-Routing is a minimal hash router (`#/schedules`, `#/settings`…). (m1) marks what exists today.
+Routing is a minimal hash router (`#/schedules`, `#/schedules/<id>` or `/new` for the editor, `#/settings`…).
+(m1) marks what exists today.
 
 | File | Responsibility |
 | --- | --- |
@@ -316,23 +344,31 @@ Routing is a minimal hash router (`#/schedules`, `#/settings`…). (m1) marks wh
 | `components/Sidebar.svelte` | (m1) logo, nav, channels state (m5: the real summary, links to Channels) + "Activate routine" toggle |
 | `components/Logo.svelte` | the logo as inline SVG (`size` prop, aria-hidden); brand colours are raw values here |
 | `components/Toggle.svelte` | (m1) switch: `<button aria-pressed>` |
-| `components/Icon.svelte` | (m1) inline stroke icons of the nav |
+| `components/Icon.svelte` | (m1) inline stroke icons of the nav; (m8) copy, trash, up, down, close, folder |
 | `components/EmptyPage.svelte` | (m1) placeholder page: title + empty-state card |
-| `pages/Schedules.svelte` | list + editor (cadence, recipients on any channel, caption, files, next 5 runs, send now); m1: placeholder |
-| `pages/Status.svelte` | connection, last runs, errors, log viewer; m1: placeholder; m6: calls `ackErrors` on mount |
-| `pages/Settings.svelte` | error recipients, autostart, keep awake, language, theme, updates; m1: theme, language, autostart, keep awake, version; m2: keep awake at startup |
+| `pages/Schedules.svelte` | (m8) list (enable toggle saving at once, when/recipients summary, next run, last result with the first problem; duplicate, delete with confirmation; empty states: no channel → Channels, no schedule → new); under `#/schedules/<id>` it renders the editor |
+| `pages/ScheduleEditor.svelte` | (m8) the editor: draft until Save (`saveSchedule`, problems under their fields), unsaved-changes guard (router), name, cadence, recipients, caption preview, files (reorder with arrows), next 5 runs, active, send now (saved only, confirmation), delete |
+| `components/editor/CadenceEditor.svelte` | (m8) interval / fixed times, anchor, time range (overnight hint), days with Weekdays / All |
+| `components/editor/FileSpecCard.svelte` | (m8) one file spec: path + `previewFiles`, match mode, processor (filtered by extension) and its schema options (list → chips with token previews; `sheets` → read from the file), own caption, send name + `previewSendName` |
+| `components/Field.svelte`, `SegmentedControl.svelte`, `ChipsInput.svelte`, `Badge.svelte`, `TimeInput.svelte` | (m8) shared form pieces |
+| `components/RecipientList.svelte`, `RecipientPicker.svelte` | (m8) recipients with channel, kind and verified badge; add = channel choice + the provider's target picker |
+| `pages/Status.svelte` | (m8) cards (channels, today, problems in 7 days, keep awake), last 50 runs (`runHistory`), log viewer with level filter and open folder; m6: calls `ackErrors` on mount |
+| `pages/Settings.svelte` | (m8) error recipients (saved at once), data folder + last backup + open; m1: theme, language, autostart, keep awake, version; m2: keep awake at startup; later: updates |
 | `pages/Channels.svelte` | (m5) channels list with live status (from the Snapshot), add channel (provider + name → its setup), pair, re-pair, log out, rename, delete (confirmations naming the channel; delete lists the affected schedules) |
-| `providers/index.ts` | (m5) per-provider UI by type (label, setup component): the only frontend place naming a provider |
-| `providers/whatsapp/Setup.svelte` | (m5) ToS note, steps on the phone, live QR, outcome; later the target picker |
+| `providers/index.ts` | (m5) per-provider UI by type (label, setup component; (m8) target picker, target kind): the only frontend place naming a provider |
+| `providers/whatsapp/Setup.svelte` | (m5) ToS note, steps on the phone, live QR, outcome |
+| `providers/whatsapp/TargetPicker.svelte`, `target.ts` | (m8) Number (ValidateTarget; channel not open → unverified) / Group (search over ListTargets, needs the connection); the target's kind label |
 | `components/QrCode.svelte` | (m5) QR as SVG, `uqr` loaded lazily; dark on light in every theme |
 | `components/ConfirmDialog.svelte` | (m5) modal `<dialog>` confirmation (title, consequences, danger button) |
 | `lib/pairing.svelte.ts` | (m5) pairing steps per channel from `channel:qr` |
-| `lib/api.ts` | (m1) the only module calling the bindings: `AppError` `{code, params}` mapping, null normalization, `onState`; (m2) `logs`; (m3) `previewTokens`; (m4) `previewRuns`; (m5) channel calls, `fromRef`, `onPairing`; (m6) `sendNow`, `ackErrors`, `onRunFinished`; (m7) `readSheets` |
+| `lib/api.ts` | (m1) the only module calling the bindings: `AppError` `{code, params}` mapping, null normalization, `onState`; (m2) `logs`; (m3) `previewTokens`; (m4) `previewRuns`; (m5) channel calls, `fromRef`, `onPairing`; (m6) `sendNow`, `ackErrors`, `onRunFinished`; (m7) `readSheets`; (m8) schedule calls (`normSchedule`), previews, settings, `runHistory`, `onSchedulesChanged`, `Problem` |
 | `lib/state.svelte.ts` | (m1) Snapshot mirrored from Go (calls + `app:state` events), applies theme and language |
-| `lib/router.svelte.ts` | (m1) hash router |
+| `lib/router.svelte.ts` | (m1) hash router; (m8) `route.param`, leave guard (`setLeaveGuard`, `leave.pending`, `proceed`, `stay`), `go` |
+| `lib/format.ts` | (m8) dates relative to today, sizes, cadence and days summaries |
 | `lib/i18n.svelte.ts` | (m1) `t()` / `tError()` over `../locales/*.json` (it typed as `typeof en`), current language |
 | `app.css` | (m1) Tailwind 4 tokens (light + dark) and `@utility` classes |
-| `e2e/mock/` | fake backend for Playwright |
+| `../playwright.config.ts`, `../e2e/app.spec.ts` | (m8) `make e2e`: Vite in `--mode e2e` (port 9246) + Chromium (`PW_CHANNEL=msedge` for the system browser), clock fixed at Mon 26 Oct 2026 09:00 Europe/Rome; `E2E_SHOTS=<dir>` saves screenshots |
+| `../e2e/mock/` | (m8) fake backend: `service.ts` (every `app.Service` method, in-memory, nothing sent; a test checks the list), `logic.ts` (tokens, next runs, cadence checks, send names), `runtime.ts` (events), `options.ts` (`window.__MOCK_OPTIONS`, `window.__mock.calls`); swapped in by `vite.config.ts` |
 | `../public/logo.svg` | favicon (`index.html`), copied to `dist/` by Vite; generated by `make icons` |
 
 ## Commands (`make help`)
@@ -349,5 +385,6 @@ Routing is a minimal hash router (`#/schedules`, `#/settings`…). (m1) marks wh
 | `make test` / `make vet` | `go test ./...` / `go vet ./...` + Linux vet of the packages without Wails |
 | `make smoke` | opt-in, read-only live check: connects the paired WhatsApp channels of `WCHRON_DATA_DIR` (required), prints status and group count, disconnects; never sends. Stop `make dev` first |
 | `make check` | bindings, vet, test, `svelte-check --fail-on-warnings`, frontend build: must be 0 errors, 0 warnings |
+| `make e2e` | bindings + Playwright UI tests against the fake backend (no Wails, no disk); required before a release |
 | `make version V=x.y.z` | `scripts/set-version.mjs` |
 | `make clean` | remove `bin/`, `frontend/dist`, `.task/` |

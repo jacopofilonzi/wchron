@@ -8,7 +8,8 @@ report, found by a name with the date in it), optionally turns an Excel workbook
 with just the sheets you choose, and sends it to one or more recipients, for example as a document through your WhatsApp account,
 linked like WhatsApp Web. You can connect several accounts (channels), also of the same service.
 
-> **Status: under development.** This README describes the planned behaviour.
+> **Status: under development.** Channels, schedules, files, Excel processing and the status page work;
+> the hardening for release and the automatic updates (described below) are still to come.
 
 > **Risk: unofficial client.** wchron uses [whatsmeow](https://github.com/tulir/whatsmeow), an
 > unofficial WhatsApp client. Using it goes against WhatsApp's terms of service, and the account could in
@@ -62,6 +63,28 @@ Pairing, log out and delete act on your real WhatsApp account: try them first wi
 
 ## Schedules
 
+The **Schedules** page lists them with when they run, their recipients, the next send and how the last one
+went (sent, sent in part, not sent or skipped, with the first problem). The switch on each row turns a
+schedule on or off at once (one that can't run, e.g. left without recipients, can't be turned on); the
+icons duplicate it (the copy is off and named "… (copy)") or delete it, after a confirmation that names it.
+**New schedule** and a click on a name open the editor, a page of its own:
+
+- **Name** and, on the right, **Active**.
+- **When**: interval or fixed times, start time, optional time range, days (with the **Weekdays** and
+  **All** shortcuts). The right column shows the next 5 sends as you type.
+- **To whom**: **Add recipient**, choose the channel (when there are several), then a number or a group
+  (see Recipients below). Each recipient shows its channel and whether it was verified.
+- **Caption**: optional, with the text it becomes right now.
+- **Files, in this order**: add, reorder with the arrows, remove; for each one the path (with what it
+  matches right now), what to do when several files match, the processing (only the ones that fit the
+  file type), an own caption and the name to send (with the names the recipients will see).
+
+Nothing is saved until **Save**: wchron then checks everything and marks the fields to fix (an empty name,
+no recipient or file, a wrong time, a path that is not complete, a date token with a typo…). Leaving the
+editor with unsaved changes asks first. Removing a recipient or a file that was already saved asks for a
+confirmation; it is gone for good when you save. **Send now** and **Delete schedule** are in the right
+column; send now needs the changes saved first and asks before sending.
+
 Each schedule has one or more recipients (on one or more channels), one or more files and a cadence:
 
 - **Interval**: every N hours and minutes, counted from a start time (default 00:00) and restarting each
@@ -89,8 +112,8 @@ Daylight saving time follows the Windows clock: a run in the hour skipped in spr
 in the hour repeated in autumn happens once.
 
 **Recipients**: each one is a channel plus a target. On WhatsApp: a number with the international prefix
-(spaces and dashes are fine; checked to be on WhatsApp when you save), or one of your groups, picked from a
-list. Renaming the group doesn't break the schedule. If the channel is not connected when you save, the
+(spaces and dashes are fine; checked to be on WhatsApp when you add it), or one of your groups, searched
+by name in the list of your groups (this needs the channel connected). Renaming the group doesn't break the schedule. If the channel is not connected when you add a number, the
 recipient is saved as **not verified** and checked automatically the next time the channel connects; one
 that fails the check (no WhatsApp account, group left) is marked and never receives anything until you fix it.
 
@@ -119,7 +142,10 @@ without a caption, unless a file has its own caption, which it always carries (a
 added (`Report {date:DD.MM.YYYY}` becomes `Report 26.10.2026.xlsx`: the date's dots don't count as an
 extension). Characters Windows doesn't allow in file names (`< > : " /  | ? *`), a dot or space at the
 end, and reserved names such as `CON` are refused when you save; if a date makes the name invalid at send
-time (e.g. a `/` in the format), that file is skipped and you get a notification.
+time (e.g. a `/` in the format), that file is skipped and you get a notification. When a file's path matches
+several files and you send them all, a name to send is numbered in name order, so they don't all arrive with
+the same name: `Report (1).xlsx`, `Report (2).xlsx`; a single match gets no number, and without a name to
+send the files keep their own (different) names. The editor shows the names the recipients will see.
 
 **Send now** runs a schedule immediately, whatever its days, time window or tolerance (not while that
 schedule is already sending). Its problems show only as a desktop notification, never as a message to the
@@ -211,7 +237,8 @@ In the file name (never in the folders) `*` stands for any text and `?` for one 
 must be full (`C:\…` or `\\server\share\…`).
 
 If a wildcard matches several files, by default nothing is sent and you get a notification; for each file
-you can choose to send the newest match (latest modified) or all matches (in name order) instead. If
+you can choose to send the newest match (latest modified) or all matches (in name order) instead (with a
+name to send, they are numbered: see "Name to send"). If
 nothing matches, that file is skipped and tried again at the next run.
 
 ### Excel: original or values only
@@ -230,9 +257,10 @@ With **values only**, wchron works on a copy, never on your file:
   recalculated**: files saved by Excel are fine; files generated by scripts may have no saved values, and
   then those cells arrive empty and you get a warning with how many there were. Values taken from sheets
   that are not sent are kept.
-- **Sheets to include**: type their names, one per row (dates allowed, e.g. `{date:MMMM YYYY}`); upper
-  and lower case and spaces around the name don't matter. Empty list: all sheets. The sheets keep the
-  workbook's order. When the file exists now, the editor can read the sheet names from it for you.
+- **Sheets to include**: type a name and press Enter for each one (dates allowed, e.g. `{date:MMMM YYYY}`:
+  the editor shows what it becomes today); upper and lower case and spaces around the name don't matter.
+  Empty list: all sheets. The sheets keep the workbook's order. When the file exists now, **Read the
+  sheets from the file** lists them: click one to include it or leave it out.
 - A listed sheet that isn't in the file: the file is sent anyway with the other sheets, and you get a
   warning (on the desktop and, if set, to the error recipients). If none of the listed sheets is there,
   the file is not sent.
@@ -247,11 +275,20 @@ pivot tables are not refreshed; links to other workbooks keep their last values 
 array formulas keep their values but no longer spill. Images, shapes, comments and formatting of the
 included sheets are normally kept.
 
+## Status and log
+
+The **Status and log** page shows the channels (how many are connected), today's runs and files sent, the
+runs with problems in the last 7 days and whether keep awake is on; then the last 50 runs and skips, each
+with its schedule, how many sends went out and the first problem; then the log, filtered by level (all,
+warnings, errors), with **Open folder** for the log files. The runs are read from the log, so they go back
+as far as the log does (about 25 MB). Opening the page clears the tray's error state.
+
 ## When something goes wrong
 
 A missing, locked or unreadable file, an Excel file without any of its sheets or a failed send: that file is skipped, the other
 files and recipients still get theirs, and at the end one desktop notification (and, if set, one message to each
-error recipient) lists the problems. The next scheduled run simply tries again. Every problem
+error recipient) lists the problems. The error recipients are set in **Settings → Error recipients**, on
+any channel, like a schedule's recipients (removing one asks first and takes effect at once). The next scheduled run simply tries again. Every problem
 has a code; [ERRORS.md](ERRORS.md) lists them all.
 
 Notifications are not repeated at every run: the first failure of a schedule is reported at once; while
@@ -295,7 +332,8 @@ None yet. Anything you need to do before installing a specific version will be l
 
 Everything is in `%APPDATA%\wchron`: `config.json` (schedules, channels, settings), `state.json` (last runs,
 whether the routine is paused), `channels\` (the WhatsApp link and other channel credentials: keep it
-private), `logs\` and `backups\`.
+private), `logs\` and `backups\`. **Settings → Data** shows the folder and the date of the last backup, and opens
+the folder.
 
 If wchron can't read `config.json` (for example after a hand edit), or the file was saved by a newer
 version, it shows an error and doesn't start, leaving the file as it is: fix it, restore it from

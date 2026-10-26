@@ -59,7 +59,10 @@ infeasible (e.g. a Wails 3 tray limitation), propose the alternative and ask bef
   go back to the dev server.
 - **Always run `make check` before declaring work done.** It must pass with zero errors and zero warnings.
   If you couldn't run something (a live WhatsApp session, a platform you're not on), say so instead of
-  claiming it works.
+  claiming it works. After a frontend change also run `make e2e` (Playwright against the fake backend,
+  separate from `make check`); it must be green before a release.
+- **A new `app.Service` method goes into the fake backend too** (`frontend/e2e/mock/service.ts`, same
+  name and behaviour in miniature), in the same change: an e2e test fails when the two lists differ.
 - Makefile recipes must work in both `sh` and `cmd.exe` (GNU make on Windows falls back to `cmd.exe`): only
   `cd dir && command`, no inline `VAR=x cmd`, no `rm`/`cp`/`mkdir -p`; use `node -e` or `go run` for file
   operations.
@@ -192,6 +195,9 @@ i18n lives in one shared catalog used by both Go and the frontend.
     sheet kinds or raw formula cells: `xlsxsnapshot/workbook.go` reads them from the zip itself.
   - Svelte 5, Vite, Tailwind 4 (`@tailwindcss/vite`, CSS-first config, no `tailwind.config.js`).
   - `gopkg.in/natefinch/lumberjack.v2` (log rotation, used only in `internal/logging`).
+  - `@playwright/test` 1.64 (frontend devDependency, `make e2e` only): its Chromium lives in
+    `%LOCALAPPDATA%\ms-playwright` (`npx playwright install chromium` if missing), or set
+    `PW_CHANNEL=msedge` to use the system Edge.
 - Deleting is permanent, never a trash (agreed for this project): schedules, recipients, file specs and
   channels are deleted only after a confirmation dialog that names the item ("Are you sure you want to
   delete …?") and states the consequences (e.g. which schedules lose a recipient when a channel goes).
@@ -217,7 +223,7 @@ i18n lives in one shared catalog used by both Go and the frontend.
   (`locales/embed.go`) and imported by the frontend. Keys are namespaced: `ui.*` (frontend only),
   `tray.*`, `notify.*` (texts of the reports sent to the error recipients), `provider.<type>.*` (provider
   labels, setup and target fields), `dialog.*` (native dialogs from Go, e.g. the startup error box),
-  `error.<code>`.
+  `schedule.*` (texts Go writes into the data, e.g. the copy's name), `error.<code>`.
 - Placeholders are `{name}`, filled from the error `params` or the caller.
 - `en.json` is the reference set of keys: the frontend types `it` as `typeof en`, a Go test checks that both
   files have the same keys and that every code in `internal/apperr` has an `error.<code>` key.
@@ -238,9 +244,11 @@ i18n lives in one shared catalog used by both Go and the frontend.
   cancellation, temp cleanup) and notify (fake toaster: repeat dedup, "works again", error recipients).
 - Fixture workbooks are synthetic (generated or hand-made), never copies of real user files. Before
   committing anything taken from a real response, replace names, phone numbers, JIDs and any token.
-- End-to-end checks: the frontend runs in Playwright against a fake backend (`frontend/e2e/mock`), no
-  Wails, no disk; install `playwright-core` in a scratch dir and use the system Chrome/Edge, unless the
-  project's own e2e setup is in place.
+- End-to-end checks: `make e2e` runs the frontend in Playwright (`@playwright/test`, a frontend
+  devDependency) against the fake backend in `frontend/e2e/mock`: no Wails, no disk, nothing sent. Vite
+  serves it in `--mode e2e`, which swaps the generated `Service` module and `@wailsio/runtime` for the mocks.
+  The browser clock is fixed (Mon 26 Oct 2026 09:00, Europe/Rome). `E2E_SHOTS=<dir>` saves screenshots
+  (scratchpad, never committed). Mock only what the UI needs; Go stays the source of truth for the rules.
 
 ## Versions and releases
 
@@ -384,5 +392,14 @@ i18n lives in one shared catalog used by both Go and the frontend.
   `[` is common in real file names.
 - In `node -e "…"` edit scripts run from Git Bash, backticks in Go struct tags become command
   substitutions: write the script to a file (scratchpad) instead.
+- `Store.UpdateConfig` holds the store's lock while it runs the change function: never call another
+  Store (or Service) method from inside it, e.g. `Snapshot()` for the language: it deadlocks. Read what
+  you need before.
+- The Status page's run history is parsed from the log ("pipeline: run finished" and the skip lines, see
+  `internal/app/history.go`): renaming those messages or their attributes breaks it.
+- The window scrolls inside `<main>`, not the document: a full-page screenshot shows only the viewport (the
+  e2e `shot` helper grows the viewport instead).
+- Editing files from Python on Windows: open with `newline=""`, or text mode writes CRLF (gofmt then flags
+  every line).
 - On Windows the channel's `session.db` must be closed (`Channel.Close`) before `channels/<id>/` can be
   deleted: the manager closes first, then removes the dir.
