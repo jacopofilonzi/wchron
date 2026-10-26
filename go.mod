@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/wailsapp/wails/v3 v3.0.0-beta.29
 	golang.org/x/sys v0.49.0
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1
 )
 
 require (
