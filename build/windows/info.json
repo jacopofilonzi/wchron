@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.1.0"
+	},
+	"info": {
+		"0000": {
+			"ProductVersion": "0.1.0",
+			"CompanyName": "Jacopo Filonzi",
+			"FileDescription": "Scheduled file sending to WhatsApp",
+			"LegalCopyright": "(c) 2026, Jacopo Filonzi",
+			"ProductName": "wchron",
+			"Comments": ""
+		}
+	}
+}
