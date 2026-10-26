@@ -1,0 +1,201 @@
+@import "tailwindcss";
+
+/*
+ * Semantic colour tokens. Every token has a light and a dark value; the theme is
+ * the data-theme attribute on <html>: "light" and "dark" force it, "system"
+ * follows prefers-color-scheme. Components only use the tokens (bg-surface,
+ * text-muted…), never raw colours, and never style dark mode themselves.
+ */
+:root {
+  --c-ground: #f7f7f8;
+  --c-sidebar: #fbfbfc;
+  --c-surface: #ffffff;
+  --c-nav-active: #edeef2;
+  --c-border: #e6e6ea;
+  --c-divider: #eeeef1;
+  --c-control-border: #e0e0e6;
+  --c-text: #17171c;
+  --c-text-soft: #55555f;
+  --c-muted: #6b6b76;
+  --c-ink: #17171c;
+  --c-on-ink: #ffffff;
+  --c-accent: #2f5bea;
+  --c-on-accent: #ffffff;
+  --c-toggle-off: #d9d9df;
+  --c-knob: #ffffff;
+  --c-success: #1f8a4c;
+  --c-warning: #c76a00;
+  --c-danger: #c62828;
+  --c-idle: #8a8a94;
+  --c-focus: #2f5bea;
+  color-scheme: light;
+}
+
+/*
+ * Dark values: text and muted ≥ 4.5:1 on surface, ground and sidebar.
+ * CSS can't share one block between the attribute and the media query: keep the
+ * two dark blocks below identical.
+ */
+:root[data-theme="dark"] {
+  --c-ground: #111114;
+  --c-sidebar: #16161a;
+  --c-surface: #1c1c21;
+  --c-nav-active: #2a2a31;
+  --c-border: #2c2c33;
+  --c-divider: #26262c;
+  --c-control-border: #3a3a42;
+  --c-text: #ededf0;
+  --c-text-soft: #c2c2ca;
+  --c-muted: #a0a0ab;
+  --c-ink: #ededf0;
+  --c-on-ink: #17171c;
+  --c-accent: #7b97f7;
+  --c-on-accent: #0f1530;
+  --c-toggle-off: #45454e;
+  --c-knob: #ffffff;
+  --c-success: #4cc38a;
+  --c-warning: #f0a44b;
+  --c-danger: #f07167;
+  --c-idle: #8a8a94;
+  --c-focus: #7b97f7;
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    --c-ground: #111114;
+    --c-sidebar: #16161a;
+    --c-surface: #1c1c21;
+    --c-nav-active: #2a2a31;
+    --c-border: #2c2c33;
+    --c-divider: #26262c;
+    --c-control-border: #3a3a42;
+    --c-text: #ededf0;
+    --c-text-soft: #c2c2ca;
+    --c-muted: #a0a0ab;
+    --c-ink: #ededf0;
+    --c-on-ink: #17171c;
+    --c-accent: #7b97f7;
+    --c-on-accent: #0f1530;
+    --c-toggle-off: #45454e;
+    --c-knob: #ffffff;
+    --c-success: #4cc38a;
+    --c-warning: #f0a44b;
+    --c-danger: #f07167;
+    --c-idle: #8a8a94;
+    --c-focus: #7b97f7;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", system-ui, sans-serif;
+  --color-ground: var(--c-ground);
+  --color-sidebar: var(--c-sidebar);
+  --color-surface: var(--c-surface);
+  --color-nav-active: var(--c-nav-active);
+  --color-border: var(--c-border);
+  --color-divider: var(--c-divider);
+  --color-control-border: var(--c-control-border);
+  --color-text: var(--c-text);
+  --color-text-soft: var(--c-text-soft);
+  --color-muted: var(--c-muted);
+  --color-ink: var(--c-ink);
+  --color-on-ink: var(--c-on-ink);
+  --color-accent: var(--c-accent);
+  --color-on-accent: var(--c-on-accent);
+  --color-toggle-off: var(--c-toggle-off);
+  --color-knob: var(--c-knob);
+  --color-success: var(--c-success);
+  --color-warning: var(--c-warning);
+  --color-danger: var(--c-danger);
+  --color-idle: var(--c-idle);
+  --color-focus: var(--c-focus);
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  background: var(--c-ground);
+  color: var(--c-text);
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+#app {
+  height: 100%;
+}
+
+:focus-visible {
+  outline: 2px solid var(--c-focus);
+  outline-offset: 2px;
+}
+
+/* A white card on the ground: page sections, lists. */
+@utility card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+}
+
+@utility page-title {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+@utility nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  color: var(--c-text-soft);
+  text-decoration: none;
+  &:hover {
+    background: var(--c-nav-active);
+  }
+  &[aria-current="page"] {
+    background: var(--c-nav-active);
+    color: var(--c-text);
+    font-weight: 500;
+  }
+}
+
+/* A settings row: label and hint on the left, control on the right. */
+@utility setting-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--c-divider);
+  &:last-child {
+    border-bottom: none;
+  }
+}
+
+@utility field {
+  width: 200px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--c-control-border);
+  padding: 0 10px;
+  font: inherit;
+  color: var(--c-text);
+  background: var(--c-surface);
+}
+
+@utility status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 9999px;
+  flex-shrink: 0;
+}
