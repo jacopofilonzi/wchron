@@ -61,6 +61,28 @@ func (e *Error) MarshalJSON() ([]byte, error) {
 	return json.Marshal(wire{Code: e.Code, Params: p})
 }
 
+// Ref is an Error as plain data (code and params, no message), for values the
+// frontend shows that are not a failed call: a channel's status reason, a
+// warning next to a result.
+type Ref struct {
+	Code   Code              `json:"code"`
+	Params map[string]string `json:"params"`
+}
+
+// RefOf returns err as a Ref (an error without a code becomes internal);
+// nil for a nil error.
+func RefOf(err error) *Ref {
+	if err == nil {
+		return nil
+	}
+	e := As(err)
+	p := map[string]string{}
+	for k, v := range e.Params {
+		p[k] = v
+	}
+	return &Ref{Code: e.Code, Params: p}
+}
+
 // As returns err as an *Error, or an Internal error wrapping it when it has
 // no code: anything that reaches the user without a code is a bug to fix.
 func As(err error) *Error {

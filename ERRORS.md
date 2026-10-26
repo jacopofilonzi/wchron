@@ -54,7 +54,8 @@ Rules:
 | `recipient.required` | error | GUI | — | No recipient chosen: a schedule needs at least one. |
 | `recipient.duplicate` | error | GUI | `recipient` | The same recipient on the same channel appears twice. |
 | `recipient.channel_missing` | error | GUI, Toast, Err, Status | `recipient` | The recipient's channel no longer exists (e.g. `config.json` edited by hand). At run time that recipient is skipped. |
-| `recipient.check_unavailable` | error | GUI | `channel` | The recipient can't be checked now (its channel is not connected). Connect and save again. |
+| `recipient.check_unavailable` | warning | GUI | `channel` | The recipient can't be checked now (its channel is not connected). It is saved anyway, as not verified (`verified: "unknown"`), and checked automatically when the channel connects. |
+| `recipient.check_failed` | warning | Status | `recipient`, `channel` | An unverified recipient was checked when its channel connected and the service rejected it (e.g. the number is not on WhatsApp, the group was left). It is stored as `verified: "no"` and never sent to; fix or remove it in the schedule. |
 | `recipient.target_invalid` | error | GUI | `channel`, `field` | A field of the recipient is missing or malformed for its provider. |
 | `filespec.path_required` | error | GUI | — | A file has no path. |
 | `filespec.path_not_absolute` | error | GUI | `value` | Paths must be absolute (`C:\…` or `\\server\…`). |
@@ -130,6 +131,7 @@ schedule for a whole stretch, not one per slot.
 | `channel.disconnected` | error | Toast, Tray, Status | `channel` | Connection lost; the app reconnects by itself with backoff. |
 | `channel.auth_failed` | error | Toast, Tray, GUI | `channel` | The service refused the credentials or the session (logged out, token revoked). Set the channel up again. |
 | `channel.outdated` | error | Toast, Tray, GUI | `channel` | The service rejected this version of the app. An update check starts; install the update when offered. |
+| `channel.logout_failed` | error | GUI | `channel` | Logging out (removing the linked device from the service) failed. Check the connection and try again, or remove the device from the phone. |
 | `channel.targets_failed` | error | GUI | `channel` | The list of groups/chats could not be loaded. |
 | `channel.secret_unavailable` | error | GUI, Toast | `channel` | The channel's stored secret can't be decrypted (e.g. Windows user profile changed). Enter it again. |
 
@@ -144,6 +146,8 @@ schedule for a whole stretch, not one per slot.
 | `wa.logged_out` | error | Toast, Tray, GUI | `channel` | The linked device was removed from the phone or expired. Pair again from the Channels page. |
 | `wa.pair_timeout` | error | GUI | `channel` | QR codes expired without a scan. Start again. |
 | `wa.pair_failed` | error | GUI | `channel` | Pairing refused or interrupted. |
+| `wa.stream_replaced` | error | Toast, Tray, GUI | `channel` | The same WhatsApp session was opened elsewhere (e.g. a copy of wchron using the same data folder), so this one was disconnected. wchron doesn't reconnect by itself, to avoid a tug of war: close the other one, then restart wchron. |
+| `wa.temporary_ban` | error | Toast, Tray, GUI | `channel` | WhatsApp temporarily blocked the account. wchron doesn't reconnect by itself; wait, then restart wchron. |
 | `wa.session_corrupt` | error | GUI, Toast | `channel` | The channel's `session.db` can't be opened. It is renamed to `session.db.corrupt-<timestamp>` in the channel dir and a new pairing is needed. |
 
 ## Error recipients
