@@ -7,9 +7,11 @@
 //
 // Left click opens and focuses the window, right click opens the menu.
 //
-// Icon states (see Icon and stateFor): active, paused, sending, error,
-// channels disconnected (or none configured), plus a marker when keep-awake is on. The icon is drawn
-// at run time and replaced on every state change.
+// Icon (see Icon and stateFor): the logo (internal/logo) with a status dot at
+// the bottom right: active green, paused grey, sending cyan, error red,
+// channels disconnected (or none configured) purple (not amber: it would read
+// as the logo's orange); plus a yellow dot at the top right when keep-awake is
+// on. The icon is drawn at run time and replaced on every state change.
 //
 // Every toggle goes through app.Store, and the tray redraws from the Store's
 // snapshots only, so the menu, the icon and the window never disagree. A

@@ -2,8 +2,12 @@ package tray
 
 import (
 	"bytes"
+	"image"
+	"image/color"
 	"image/png"
 	"testing"
+
+	"github.com/jacopofilonzi/wchron/internal/logo"
 )
 
 func TestIconIsAValidPNG(t *testing.T) {
@@ -50,6 +54,39 @@ func TestStateFor(t *testing.T) {
 	for _, c := range cases {
 		if got := stateFor(c.active, c.connected); got != c.want {
 			t.Errorf("stateFor(%v, %v) = %v, want %v", c.active, c.connected, got, c.want)
+		}
+	}
+}
+
+func TestIconDotColours(t *testing.T) {
+	decode := func(b []byte) *image.NRGBA {
+		img, err := png.Decode(bytes.NewReader(b))
+		if err != nil {
+			t.Fatal(err)
+		}
+		n, ok := img.(*image.NRGBA)
+		if !ok {
+			t.Fatalf("decoded as %T", img)
+		}
+		return n
+	}
+	purple := color.NRGBA{0x8E, 0x4E, 0xC6, 0xFF}
+	yellow := color.NRGBA{0xF2, 0xB7, 0x05, 0xFF}
+	img := decode(Icon(StateDisconnected, true))
+	if c := img.NRGBAAt(25, 25); c != purple {
+		t.Errorf("status dot %v, want purple", c)
+	}
+	if c := img.NRGBAAt(25, 6); c != yellow {
+		t.Errorf("keep-awake dot %v, want yellow", c)
+	}
+	// the logo is underneath: its centre dot is the accent orange
+	if c := img.NRGBAAt(16, 16); c != logo.Accent {
+		t.Errorf("logo centre %v, want %v", c, logo.Accent)
+	}
+	// the status colours never match the logo's orange
+	for s, c := range statusColour {
+		if c == logo.Accent {
+			t.Errorf("state %d uses the logo accent", s)
 		}
 	}
 }
