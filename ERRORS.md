@@ -44,9 +44,9 @@ Rules:
 | `schedule.no_days` | error | GUI | — | No active day selected. |
 | `schedule.not_found` | error | GUI | `id` | The schedule was deleted meanwhile (e.g. from another view). |
 | `schedule.busy` | error | GUI | `name` | "Send now" while a run of the same schedule is in progress. |
-| `cadence.interval_invalid` | error | GUI | — | Interval is 0 or longer than 24h. |
+| `cadence.interval_invalid` | error | GUI | — | Interval is 0, longer than 24h, negative, or has more than 59 minutes. |
 | `cadence.anchor_invalid` | error | GUI | `value` | Start time is not a valid `HH:MM`. |
-| `cadence.window_invalid` | error | GUI | — | Window start is not before window end. |
+| `cadence.window_invalid` | error | GUI | — | Window start and end are missing, not valid `HH:MM`, or equal. A start after the end is valid: the window crosses midnight (e.g. 22:00–02:00). |
 | `cadence.window_empty` | error | GUI | — | No slot of the interval falls inside the window. |
 | `cadence.no_times` | error | GUI | — | Fixed-times mode with no time. |
 | `cadence.time_invalid` | error | GUI | `value` | A fixed time is not a valid `HH:MM`. |
@@ -105,15 +105,18 @@ that run, per file and recipient.
 
 ## Skip reasons (status and log)
 
-Not errors: shown in the schedule's last result and in the log, never as a Toast.
+Not errors: shown in the schedule's last result and in the log, never as a Toast. `slot`, `from` and `to`
+are local wall-clock times `YYYY-MM-DD HH:MM`. Missed and paused slots are aggregated: one entry per
+schedule for a whole stretch, not one per slot.
 
 | Code | Level | Where | Params | Meaning |
 | --- | --- | --- | --- | --- |
-| `slot.missed` | skip | Status | `schedule`, `slot` | The slot passed while the PC was asleep/off or the app was closed; never recovered. |
+| `slot.missed` | skip | Status | `schedule`, `count`, `from`, `to` | `count` slots (the first at `from`, the last at `to`) passed more than 5 minutes ago when the scheduler looked (PC asleep or off, clock moved forward); never recovered. Slots that passed while the app was closed are not reported. |
 | `slot.late` | skip | Status | `schedule`, `slot` | The run would start more than 5 minutes after the slot; skipped. |
 | `slot.dst_gap` | skip | Status | `schedule`, `slot` | The slot falls in the hour skipped by the spring DST change. |
-| `slot.dst_repeat` | skip | Status | `schedule`, `slot` | Second occurrence of a slot in the hour repeated by the autumn DST change. |
-| `slot.paused` | skip | Status | `schedule`, `slot` | The routine was paused from the tray. |
+| `slot.dst_repeat` | skip | Status | `schedule`, `slot` | Second occurrence of a slot in the hour repeated by the autumn DST change (it ran, or was due, at the first). |
+| `slot.paused` | skip | Status | `schedule`, `count`, `from`, `to` | `count` slots came while the routine was paused from the tray (one entry per paused stretch). |
+| `slot.overlap` | skip | Status | `schedule`, `slot` | The previous run of the same schedule was still in progress at the slot. Different schedules run in parallel; a schedule never overlaps itself. |
 
 ## Channels (any provider)
 
