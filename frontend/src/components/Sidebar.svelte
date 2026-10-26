@@ -2,12 +2,19 @@
   import Icon from "./Icon.svelte";
   import Logo from "./Logo.svelte";
   import Toggle from "./Toggle.svelte";
-  import { api, type AppError } from "../lib/api";
+  import { api, ChannelsState, type AppError } from "../lib/api";
   import { t, tError, type Key } from "../lib/i18n.svelte";
   import { href, pages, route } from "../lib/router.svelte";
   import { app, applySnapshot } from "../lib/state.svelte";
 
   let error = $state<AppError | null>(null);
+
+  const summary = {
+    [ChannelsState.ChannelsNone]: { key: "ui.channels.none", dot: "bg-warning" },
+    [ChannelsState.ChannelsConnected]: { key: "ui.channels.summary.connected", dot: "bg-success" },
+    [ChannelsState.ChannelsDisconnected]: { key: "ui.channels.summary.disconnected", dot: "bg-danger" },
+  } as const satisfies Record<string, { key: Key; dot: string }>;
+  const channels = $derived(summary[app.s?.channels as keyof typeof summary] ?? summary[ChannelsState.ChannelsNone]);
 
   async function setRoutine(on: boolean) {
     const r = await api.setRoutineActive(on);
@@ -32,9 +39,9 @@
 
   {#if app.s}
     <div class="card flex flex-col gap-2.5 rounded-[10px] p-3 text-[13px]">
-      <div class="flex items-center gap-2">
-        <span class="status-dot bg-warning"></span>{t("ui.channels.none")}
-      </div>
+      <a class="flex items-center gap-2 text-text no-underline" href={href("channels")}>
+        <span class="status-dot {channels.dot}" aria-hidden="true"></span>{t(channels.key)}
+      </a>
       <div class="flex items-center justify-between">
         <span>{t("ui.routine.toggle")}</span>
         <Toggle pressed={app.s.routine_active} label={t("ui.routine.toggle")} onchange={setRoutine} />

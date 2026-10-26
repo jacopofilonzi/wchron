@@ -5,6 +5,7 @@
   import Status from "./pages/Status.svelte";
   import Channels from "./pages/Channels.svelte";
   import { route, startRouter } from "./lib/router.svelte";
+  import { startPairings } from "./lib/pairing.svelte";
   import { startState } from "./lib/state.svelte";
 
   const views = { schedules: Schedules, status: Status, channels: Channels, settings: Settings };
@@ -12,6 +13,7 @@
 
   $effect(() => startRouter());
   $effect(() => startState());
+  $effect(() => startPairings());
 </script>
 
 <div class="flex h-full bg-ground text-text">
