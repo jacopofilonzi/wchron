@@ -28,6 +28,17 @@
 // The Manager (manager.go) owns the lifecycle of every configured channel:
 // open, connect, reconnect, pairing, logout, delete, target checks, and the
 // recipients' pending verifications (config.Recipient.Verified).
+//
+// Deleting a channel (after the GUI's confirmation, which lists Usage)
+// closes it, logs out where it has a session and is connected (WhatsApp:
+// removes the linked device), removes it and its recipients from every
+// schedule and from the error recipients (a schedule left with none is
+// disabled) and deletes channels/<id>/. Recipients pointing at a channel
+// that doesn't exist (hand-edited config) are skipped at run time with
+// recipient.channel_missing (pipeline, milestone 6).
+//
+// Future providers (not now): Telegram (bot token, sendDocument, chat ids),
+// ntfy (server URL + topic, optional token, attachments via PUT).
 package provider
 
 import (

@@ -6,7 +6,7 @@ instead of re-reading the whole repo. What the app does, as the user sees it, is
 every error code the user can see is in [ERRORS.md](ERRORS.md).
 
 **Temporary: `REFERENCE.md`** (local, git-ignored, never committed) holds the detailed design rules of the
-packages not written yet (scheduler, tokens, resolver, processors, pipeline, wa, notify, update).
+packages not written yet (resolver, processors, pipeline, notify, update).
 Read the section of the package you're implementing. When the package lands, move its section
 into the package doc comment (and its tests), delete it from `REFERENCE.md`, and delete the file once it's
 empty.
@@ -75,7 +75,10 @@ infeasible (e.g. a Wails 3 tray limitation), propose the alternative and ask bef
     reports to the error recipients (`notify`);
   - channel setup: WhatsApp QR pairing, re-pair and logout (they create or remove a linked device on the
     account); later, any provider login;
-  - `ValidateTarget` / `ListTargets` (read-only, but they hit the service: only with a test channel);
+  - `ValidateTarget` / `ListTargets` (read-only, but they hit the service: only with a test channel), and the
+    automatic check of the unverified recipients each time a channel connects (`IsOnWhatsApp`, group list);
+  - connecting a channel at all (the app does it at startup for every enabled channel) and `make smoke`
+    (read-only: connects the paired dev channels of `WCHRON_DATA_DIR`, lists the groups; never sends);
   - the update check/download (reads GitHub releases) and the installer it launches;
   - autostart (writes the user's `Run` registry key) and keep-awake (`SetThreadExecutionState`).
 - **Development never uses production credentials or services**: dev runs use their own data dir, so their
@@ -173,8 +176,12 @@ i18n lives in one shared catalog used by both Go and the frontend.
   installed version before using an API. Ask before adding a new dependency.
   - Wails `v3.0.0-beta.x` (pre-stable, pinned in `go.mod`; the `wails3` CLI must match it). Don't run
     `wails3 update build-assets`: it overwrites the customized files in `build/`.
-  - whatsmeow: no tagged releases, pinned to a commit; its API changes often, read the source at that commit.
-  - `modernc.org/sqlite` (no CGO): the driver name is `sqlite`, not `sqlite3`.
+  - whatsmeow: no tagged releases, pinned to a commit: `go.mau.fi/whatsmeow v0.0.0-20261026125351-1fbae988179a`
+    (commit `1fbae988179a`, 2026-10-26); its API changes often, read the source at that commit. Upgrade with
+    `go get go.mau.fi/whatsmeow@<commit>` and re-check `internal/provider/whatsapp/real.go` against it.
+  - `modernc.org/sqlite` v1.61 (no CGO): the driver name is `sqlite`, not `sqlite3`; pragmas go in the DSN as
+    `?_pragma=foreign_keys(1)` after a plain path (no `file:` prefix, so Windows paths need no escaping).
+  - `uqr` 0.1 (frontend, zero dependencies): QR encoding for the pairing, imported lazily.
   - excelize v2: reads cached formula values, never recalculates.
   - Svelte 5, Vite, Tailwind 4 (`@tailwindcss/vite`, CSS-first config, no `tailwind.config.js`).
   - `gopkg.in/natefinch/lumberjack.v2` (log rotation, used only in `internal/logging`).
@@ -211,7 +218,12 @@ i18n lives in one shared catalog used by both Go and the frontend.
 ## Testing
 
 - Unit tests live next to the code. Test parsing against fixtures, never live requests; live checks are a
-  separate opt-in command (`make smoke`, read-only: connection state and group list of the dev session).
+  separate opt-in command (`make smoke`, read-only: connection state and group count of the paired dev
+  channels; it refuses to run without `WCHRON_DATA_DIR`; stop `make dev` first, two processes on one
+  session kick each other out). Agents never run it unless asked.
+- The WhatsApp channel logic is tested through its `waClient` interface with a fake client
+  (`internal/provider/whatsapp`); only `session.go` touches a real (local) SQLite file. The manager is
+  tested with `provider/fake`.
 - Required coverage: token engine (Italian names, offsets, escaping), scheduler (fake clock: interval,
   fixed times, window, days, jitter, skipped slots, DST both ways), Excel processor (fixture workbooks:
   formulas, missing sheet, locked file, no cached values), config/state migrations.
@@ -263,10 +275,15 @@ i18n lives in one shared catalog used by both Go and the frontend.
 
 ## Adding a provider (e.g. Telegram, ntfy)
 
-1. Create `internal/provider/<type>/` implementing `provider.Provider` and `provider.Channel`: capabilities
-   (files, max size, caption length, targets list, pairing), settings and target schemas, `Send`.
-   Secrets through `platform.Protect`, data under the channel dir it is given.
-2. Register it in `internal/provider/registry.go`.
+1. Create `internal/provider/<type>/` implementing `provider.Provider` and `provider.Channel` (plus
+   `provider.Pairer` / `provider.LogoutChannel` if it has an interactive setup or a removable session):
+   capabilities (files, max size, caption length, targets list, pairing), settings and target schemas,
+   `Send`. Report the status through `Deps.OnStatus` (`Retry` only for transient disconnections: the
+   manager does the backoff); wrap target rejections in `provider.ErrTargetInvalid`; offline,
+   `ValidateTarget` returns the normalized target with `recipient.check_unavailable`. Secrets through
+   `platform.Protect` (DPAPI: to be added to `internal/platform` with the first provider that has a
+   secret), data under the channel dir it is given.
+2. Register it in `main.go` (`provider.NewRegistry(...)`): the only place that names the providers.
 3. Frontend: `frontend/src/providers/<type>/` with the setup component (or the generic schema form) and
    the target picker; register it in the providers map.
 4. Its error codes (`<prefix>.*`) in `internal/apperr`, `ERRORS.md` and both catalogs; labels under
@@ -323,4 +340,16 @@ i18n lives in one shared catalog used by both Go and the frontend.
   `build/appicon.png` are committed assets written by `make icons`, not regenerated by the build. The
   build embeds `icon.ico` in the exe (`wails3 generate syso`) and NSIS uses it for the installer
   (`MUI_ICON`/`MUI_UNICON`).
-- whatsmeow logs to its own logger interface: adapt it to slog in `internal/wa`, never let it print to stdout.
+- whatsmeow logs to its own logger interface: it is adapted to slog in `internal/provider/whatsapp/log.go`
+  (numbers masked, the "Recv"/"Send" protocol dumps dropped); never let it print to stdout.
+- whatsmeow calls the event handlers synchronously from its goroutines and some client calls
+  (`Disconnect`) wait for them: never hold the channel's lock while calling the client.
+- whatsmeow's own reconnect is off (`EnableAutoReconnect = false`): the provider manager's backoff is the
+  only one. Its 515 reconnect right after pairing still happens inside whatsmeow.
+- A whatsmeow logout (ours or from the phone) deletes the device from `session.db`: the next pairing needs a
+  fresh device (`realClient.QRChannel` does it). The device name and props shown on the phone are package
+  globals in whatsmeow's `store` (`setDeviceInfo`, set once).
+- Two processes on the same WhatsApp session (e.g. `make smoke` while `make dev` runs, or a copied data dir)
+  get `StreamReplaced`: the channel stops (`wa.stream_replaced`) instead of fighting back.
+- On Windows the channel's `session.db` must be closed (`Channel.Close`) before `channels/<id>/` can be
+  deleted: the manager closes first, then removes the dir.

@@ -83,7 +83,8 @@ only the first error is reported.
 ## Run time (scheduled runs and "send now")
 
 Collected per run: one Toast (and one message to each error recipient, if any) lists all the problems of
-that run, per file and recipient.
+that run, per file and recipient. The provider fills the params it knows (`file`, `size`, `max`); the
+pipeline adds `schedule`, `channel` and `recipient`.
 
 | Code | Level | Where | Params | Meaning / what to do |
 | --- | --- | --- | --- | --- |
@@ -141,7 +142,7 @@ schedule for a whole stretch, not one per slot.
 | --- | --- | --- | --- | --- |
 | `wa.number_invalid` | error | GUI | `value` | Not a valid international number (needs the country prefix). |
 | `wa.not_on_whatsapp` | error | GUI | `value` | The number has no WhatsApp account. |
-| `wa.group_not_found` | error | GUI, Toast, Err | `channel`, `name` | The group is no longer among the account's groups (left or removed). At run time that recipient is skipped. |
+| `wa.group_not_found` | error | GUI, Toast, Err | `channel`, `name` | The group is no longer among the account's groups (left or removed). At run time that recipient is skipped. `name` is the group JID when its name is not known. |
 | `wa.client_outdated` | error | Toast, Tray, GUI | `channel` | WhatsApp rejected this version of whatsmeow. An update check starts; install the update when offered. |
 | `wa.logged_out` | error | Toast, Tray, GUI | `channel` | The linked device was removed from the phone or expired. Pair again from the Channels page. |
 | `wa.pair_timeout` | error | GUI | `channel` | QR codes expired without a scan. Start again. |

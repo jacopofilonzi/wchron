@@ -34,6 +34,32 @@ window.
 On first start, open **Channels** in the window, add a WhatsApp channel and scan the QR code from your phone
 (Settings → Linked devices → Link a device).
 
+## Channels
+
+A channel is one account on a service: today WhatsApp, linked to your phone like WhatsApp Web. You can add
+several, also of the same service (e.g. a personal and a work number). The **Channels** page lists them
+with their state (connected, connecting, not connected, not paired, logged out, update needed).
+
+- **Add**: **Add channel**, choose the service and a name, then **Create and set up**. For WhatsApp a QR code
+  appears: on the phone open WhatsApp → Settings → Linked devices → Link a device and point it at the
+  code. The code changes every few seconds; after about two minutes without a scan the pairing stops and
+  you can start it again. On the phone the device shows as **wchron**. A paired channel shows its
+  account with only the last 3 digits.
+- **Log out** removes the linked device from the account (it disappears from the phone's list) and keeps
+  the channel, ready for a new pairing; nothing is sent through it until then. **Pair again** does a log
+  out and a new pairing in one step. Both need the channel to be connected.
+- **Rename** changes only the label.
+- **Delete** asks you to confirm and shows which schedules lose recipients; a schedule left without any
+  recipient is disabled. If the channel is connected, its linked device is removed from the phone first;
+  if it isn't, remove "wchron" by hand from the phone's Linked devices.
+
+A channel that loses the connection reconnects by itself (after 5 seconds, then waiting longer each
+time, up to 5 minutes). It doesn't when the phone removed the linked device (pair it again), when
+WhatsApp rejects the app version (update wchron), when the same session was opened by another copy of
+wchron, or after a temporary block from WhatsApp (restart wchron later).
+
+Pairing, log out and delete act on your real WhatsApp account: try them first with a secondary number.
+
 ## Schedules
 
 Each schedule has one or more recipients (on one or more channels), one or more files and a cadence:
@@ -63,8 +89,10 @@ Daylight saving time follows the Windows clock: a run in the hour skipped in spr
 in the hour repeated in autumn happens once.
 
 **Recipients**: each one is a channel plus a target. On WhatsApp: a number with the international prefix
-(checked to be on WhatsApp when you save), or one of
-your groups, picked from a list. Renaming the group doesn't break the schedule.
+(spaces and dashes are fine; checked to be on WhatsApp when you save), or one of your groups, picked from a
+list. Renaming the group doesn't break the schedule. If the channel is not connected when you save, the
+recipient is saved as **not verified** and checked automatically the next time the channel connects; one
+that fails the check (no WhatsApp account, group left) is marked and never receives anything until you fix it.
 
 **Deleting** a schedule or a channel is permanent: wchron asks you to confirm first.
 

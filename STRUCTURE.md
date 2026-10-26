@@ -6,9 +6,9 @@ one or more channels. Delivery goes through provider plug-ins: WhatsApp (whatsme
 Telegram/ntfy possible later without structural changes. One Go process holds the core (scheduler,
 pipeline, channels, state); the Svelte GUI in a Wails window talks to it through generated bindings and events.
 
-> Status: milestones 1 (skeleton), 2 (data, logging), 3 (tokens) and 4 (scheduler) are in place; the rest of
-> this file is the planned layout. Packages and files that exist today are marked **(m1)** … **(m4)**. Update this file as each
-> milestone lands.
+> Status: milestones 1 (skeleton), 2 (data, logging), 3 (tokens), 4 (scheduler) and 5 (providers, WhatsApp) are
+> in place; the rest of this file is the planned layout. Packages and files that exist today are marked
+> **(m1)** … **(m5)**. Update this file as each milestone lands.
 
 ## Milestones
 
@@ -18,8 +18,9 @@ pipeline, channels, state); the Svelte GUI in a Wails window talks to it through
       paths and fatal dialog, error registry.
 - [x] 3. Token engine with tests (Italian names, offsets, escaping).
 - [x] 4. Scheduler with tests (interval, fixed times, window, days, jitter, skipped slots, DST both ways, fake clock).
-- [ ] 5. Provider layer (interface, registry, channels, fake provider, DPAPI secrets) + WhatsApp provider:
-      QR pairing, session persistence, number check, group list, document send.
+- [x] 5. Provider layer (interface, registry, channel manager, fake provider) + WhatsApp provider: QR
+      pairing, session persistence, number check, group list, document send; minimal Channels page.
+      DPAPI secrets are deferred to the first provider that needs one (Telegram/ntfy).
 - [ ] 6. Pipeline with `passthrough`, resolver, multiple files × multiple recipients, pauses, error
       aggregation, notifications to the error recipients.
 - [ ] 7. `xlsx-sheets` processor with tests on synthetic workbooks (formulas, missing sheet, locked file,
@@ -32,7 +33,9 @@ pipeline, channels, state); the Svelte GUI in a Wails window talks to it through
 wchron/
 ├── main.go             wiring (m1, m2): Wails app + single instance first, then devenv → paths → log file →
 │                       startup.Open (config/state load, backup, migrate) → store → service, window, tray;
-│                       (m4) scheduler (DryRunner) reloaded and started on ApplicationStarted, stopped first on quit
+│                       (m4) scheduler (DryRunner) reloaded and started on ApplicationStarted, stopped first on quit;
+│                       (m5) provider registry (the only place naming the providers) + channel manager, started
+│                       after the scheduler on ApplicationStarted, closed after it on quit
 ├── internal/           Go (go.mod: 1.26, toolchain 1.27) — core and platform layer (see below)
 ├── locales/            it.json, en.json (shared i18n catalog, flat namespaced keys) + embed.go (m1)
 ├── frontend/           Svelte 5 + TS + Vite + Tailwind 4 — GUI
@@ -55,7 +58,8 @@ wchron/
 ```text
 internal/
 ├── app/            (m1, m2) Store (state loaded from config/state, persisted on change, side effects,
-│                   subscribers) + Service (the Wails bindings) + events
+│                   subscribers) + Service (the Wails bindings) + events; (m5) the Store is the channel
+│                   manager's ConfigStore and holds the channel list; channel bindings and events
 ├── apperr/         (m1) Error{Code, Params, Err}, codes.go (registry mirrored by ERRORS.md), JSON `{code, params}`
 ├── clock/          (m3) Clock interface (Now), Real, Fake (Set/Advance) for tests
 ├── config/         (m2) config.json: types, defaults, normalization, structural validation, atomic save,
@@ -84,10 +88,17 @@ internal/
 │                   (logs only, until the pipeline). Design in the package doc (doc.go)
 ├── resolver/       path pattern → concrete file(s); glob match mode: error | newest | all
 ├── processor/      Processor interface + registry; passthrough/, xlsxsheets/
-├── provider/       Provider + Channel interfaces, registry, capabilities, settings/target schemas; channel
-│   │               manager (open/close/status of every configured channel)
-│   ├── whatsapp/   whatsmeow: QR pairing, logout, IsOnWhatsApp, groups, upload+send document
-│   └── fake/       in-memory provider for tests
+├── provider/       (m5) provider.go: Provider, Channel, Pairer, LogoutChannel interfaces, Status/State,
+│   │               Capabilities, Field schemas, Message; registry.go: Registry, Info; manager.go: Manager (open
+│   │               enabled channels, connect, backoff reconnect 5 s→5 min, pairing, logout, rename, create,
+│   │               delete + recipient cleanup, Usage, ValidateTarget, ListTargets, pending recipient checks on
+│   │               connect, OnOutdated hook), ConfigStore, ErrTargetInvalid. Design in the package doc
+│   ├── whatsapp/   (m5) whatsmeow linked device (doc.go: design): provider.go (capabilities, schemas, Open),
+│   │   │           channel.go (status from events, pairing, logout, targets), send.go (documents, 100 MB,
+│   │   │           one retry), target.go (E.164 / group JID), client.go (waClient interface), real.go
+│   │   │           (whatsmeow adapter), session.go (session.db, corrupt → set aside), log.go (slog, masked)
+│   │   └── smoke/  (m5) `make smoke`: read-only live check of the paired dev channels
+│   └── fake/       (m5) in-memory provider: scriptable status, pairing, failures; records sends
 ├── pipeline/       one run: per file resolve → process once → send to each recipient; 2–5 s pauses; error report
 ├── notify/         report fan-out: desktop toast + text to each error recipient (any channel)
 ├── update/         GitHub release check / download, driven by update.config.json
@@ -97,7 +108,7 @@ internal/
 │                   purple) + yellow keep-awake dot; (m4) status lines: channels, next run
 └── platform/       interfaces + _windows.go / _other.go: SleepInhibitor, Autostart (m1); Paths (data dir
                     layout, Ensure → storage.unavailable), FatalDialog (MessageBoxW) (m2); later Toast,
-                    Protect/Unprotect (DPAPI, for channel secrets).
+                    Protect/Unprotect (DPAPI, for channel secrets: with the first provider that has one).
                     Single instance is Wails' SingleInstance option (in main.go).
 ```
 
@@ -116,22 +127,32 @@ current language; a malformed one returns its `token.*` error with `pos` (1-base
 max 50) or the cadence's `cadence.*` / `schedule.no_days` error. The Snapshot also carries (m4)
 `next_run` `{schedule_id, schedule_name, at}` | null: the earliest upcoming run (set by the scheduler, shown
 in the tray, present also while paused).
+Channels (m5): `Providers()` (`[{type, capabilities {files, max_file_size, max_caption_len, targets,
+pairing}, settings_schema, target_schema}]`; fields `{key, kind: text|phone|select|secret|pick, required,
+options, when}`, labels `provider.<type>.<schema>.<key>`), `ListChannels()` (`ChannelInfo` `{id, provider,
+name, enabled, status {state, error {code, params} | null, account}, pairing}`; `state`: `connected` |
+`connecting` | `disconnected` | `logged_out` | `not_paired` | `outdated` | `error`; `account` masked
+"***567"), `CreateChannel(provider, name)`, `RenameChannel(id, name)`, `ChannelUsage(id)` (`{schedules:
+[{id, name, recipients, disabled}], error_recipients}` for the delete dialog), `DeleteChannel(id)`
+(`{was_paired, logged_out}`), `StartPairing(id)` (a paired channel is logged out first), `CancelPairing(id)`,
+`Logout(id)`, `ValidateTarget(channelID, target)` (`{target (normalized), display_name, verified, warning}`:
+offline it is `verified: "unknown"` with the `recipient.check_unavailable` warning), `ListTargets(channelID)`
+(`[{target, display_name}]`). The Snapshot (m5) also carries `channel_list` (`ChannelInfo[]`) and the real
+`channels` summary (worst state among the enabled channels).
 `Logs(level, limit)` (m2) returns the most recent log entries `{time, level, msg, attrs}`, newest first
 (`level`: minimum, `""` for all; `limit` 0 = 200, max 5000; `logs.read_failed`); its viewer is milestone 8.
 `frontend/bindings` is generated (`make bindings`, and by every build) and git-ignored.
 
 Planned surface (names final at implementation): schedules CRUD (`ListSchedules`, `SaveSchedule`,
-`DeleteSchedule`: they validate with `scheduler.Validate` and call `Scheduler.Reload`),
-`ReadSheets(path)`, `SendNow(id)`, settings get/save, channels (`Providers` with capabilities and schemas,
-`ListChannels`, `SaveChannel`, `DeleteChannel` (returns the affected schedules first via `ChannelUsage`),
-`ChannelStatus`, `StartPairing(id)`,
-`Logout(id)`, `ValidateTarget(channel, target)`, `ListTargets(channel)`), `CheckUpdate`,
+`DeleteSchedule`: they validate with `scheduler.Validate`, check new recipients with `ValidateTarget` and call
+`Scheduler.Reload`), `ReadSheets(path)`, `SendNow(id)`, settings get/save, `CheckUpdate`,
 `ProcessorSchemas`.
 Errors come back as `apperr.Error` serialized as `{code, params}`.
 
 Events (backend → frontend): `app:state` (m1: full Snapshot after every change, from the window or the
 tray; replaces the planned `routine:toggled`; m4: also when the next run changes, so there is no
-`schedule:next` event), `channel:status` and `channel:qr` (with the channel id),
+`schedule:next` event), (m5) `channel:status` (the `ChannelInfo` that changed) and `channel:qr` (pairing steps
+`{channel_id, kind: code|success|timeout|failed|cancelled, code, error}`),
 `run:started`, `run:finished`,
 `update:available`.
 
@@ -145,7 +166,7 @@ All under the data dir (default `%APPDATA%\wchron`, override `WCHRON_DATA_DIR`; 
 | `config.json` | `schema_version`, `settings`, `channels[]`, `schedules[]` (fields below); written on the first change, not at the first start |
 | `state.json` | `schema_version`, `routine_active`, `last_app_version`, `notified_update_version`, per schedule: last fired slot, last result, last error |
 | `state.json.corrupt-<YYYYMMDD-HHMMSS>` | an unreadable `state.json` moved aside at startup (`state.read_failed`); never deleted by the app |
-| `channels/<id>/` | per-channel data: WhatsApp `session.db` (whatsmeow, `modernc.org/sqlite`), DPAPI-encrypted secrets of other providers |
+| `channels/<id>/` | per-channel data (m5): WhatsApp `session.db` (whatsmeow sqlstore, `modernc.org/sqlite`; never logged); an unreadable one is renamed `session.db.corrupt-<YYYYMMDD-HHMMSS>` (never deleted by the app). Later: DPAPI-encrypted secrets of other providers. Created with the channel, deleted with it |
 | `logs/` | `wchron.log` (JSON lines) + up to 4 rotated `wchron-<timestamp>.log` (about 5 MB each, not compressed) |
 | `backups/<YYYYMMDD-HHMMSS>-v<old version>/` | copies of `config.json`, `state.json` and `channels/` (with the SQLite `-wal`/`-shm` files) made at startup before a migration, when the app version changed since the last run, or when `state.json` is missing next to a `config.json`. The 10 most recent are kept, older ones deleted (app-generated copies, not user data) |
 
@@ -178,8 +199,11 @@ Missing fields are filled on load (nil lists become `[]`, empty enums their defa
 
 **Recipient**
 
-- `id`, `channel_id`, `target`: provider-specific (WhatsApp: `{kind: "number", number}` E.164 or
-  `{kind: "group", jid}`), `display_name` (last known name, for display only)
+- `id` (unique within its list), `channel_id`, `target`: provider-specific (WhatsApp: `{kind: "number", number}`
+  E.164 or `{kind: "group", jid}`), `display_name` (last known name, for display only)
+- `verified` (m5): `"unknown"` (default: saved while the channel was not connected, checked automatically at
+  its next connection), `"yes"` or `"no"` (rejected by the service: never sent to, `recipient.check_failed`
+  in the log). Added to v1 in place (v1 was never released), no migration step.
 
 **Schedule**
 
@@ -240,7 +264,7 @@ Routing is a minimal hash router (`#/schedules`, `#/settings`…). (m1) marks wh
 | File | Responsibility |
 | --- | --- |
 | `App.svelte` | (m1) shell: sidebar + current page; starts the router and the state sync |
-| `components/Sidebar.svelte` | (m1) logo, nav, channels state + "Activate routine" toggle |
+| `components/Sidebar.svelte` | (m1) logo, nav, channels state (m5: the real summary, links to Channels) + "Activate routine" toggle |
 | `components/Logo.svelte` | the logo as inline SVG (`size` prop, aria-hidden); brand colours are raw values here |
 | `components/Toggle.svelte` | (m1) switch: `<button aria-pressed>` |
 | `components/Icon.svelte` | (m1) inline stroke icons of the nav |
@@ -248,9 +272,13 @@ Routing is a minimal hash router (`#/schedules`, `#/settings`…). (m1) marks wh
 | `pages/Schedules.svelte` | list + editor (cadence, recipients on any channel, caption, files, next 5 runs, send now); m1: placeholder |
 | `pages/Status.svelte` | connection, last runs, errors, log viewer; m1: placeholder |
 | `pages/Settings.svelte` | error recipients, autostart, keep awake, language, theme, updates; m1: theme, language, autostart, keep awake, version; m2: keep awake at startup |
-| `pages/Channels.svelte` | channels list with status, add channel (pick provider → its setup component), rename, delete (with confirmation); m1: placeholder |
-| `providers/<type>/` | per-provider UI: setup (WhatsApp: QR pairing, re-pair, logout) and target picker |
-| `lib/api.ts` | (m1) the only module calling the bindings: `AppError` `{code, params}` mapping, null normalization, `onState`; (m2) `logs`; (m3) `previewTokens`; (m4) `previewRuns` |
+| `pages/Channels.svelte` | (m5) channels list with live status (from the Snapshot), add channel (provider + name → its setup), pair, re-pair, log out, rename, delete (confirmations naming the channel; delete lists the affected schedules) |
+| `providers/index.ts` | (m5) per-provider UI by type (label, setup component): the only frontend place naming a provider |
+| `providers/whatsapp/Setup.svelte` | (m5) ToS note, steps on the phone, live QR, outcome; later the target picker |
+| `components/QrCode.svelte` | (m5) QR as SVG, `uqr` loaded lazily; dark on light in every theme |
+| `components/ConfirmDialog.svelte` | (m5) modal `<dialog>` confirmation (title, consequences, danger button) |
+| `lib/pairing.svelte.ts` | (m5) pairing steps per channel from `channel:qr` |
+| `lib/api.ts` | (m1) the only module calling the bindings: `AppError` `{code, params}` mapping, null normalization, `onState`; (m2) `logs`; (m3) `previewTokens`; (m4) `previewRuns`; (m5) channel calls, `fromRef`, `onPairing` |
 | `lib/state.svelte.ts` | (m1) Snapshot mirrored from Go (calls + `app:state` events), applies theme and language |
 | `lib/router.svelte.ts` | (m1) hash router |
 | `lib/i18n.svelte.ts` | (m1) `t()` / `tError()` over `../locales/*.json` (it typed as `typeof en`), current language |
@@ -270,6 +298,7 @@ Routing is a minimal hash router (`#/schedules`, `#/settings`…). (m1) marks wh
 | `make bindings` | regenerate `frontend/bindings` |
 | `make icons` | regenerate the logo assets from `internal/logo` (`icon.ico`, `appicon.png`, `logo.svg`; committed) |
 | `make test` / `make vet` | `go test ./...` / `go vet ./...` + Linux vet of the packages without Wails |
+| `make smoke` | opt-in, read-only live check: connects the paired WhatsApp channels of `WCHRON_DATA_DIR` (required), prints status and group count, disconnects; never sends. Stop `make dev` first |
 | `make check` | bindings, vet, test, `svelte-check --fail-on-warnings`, frontend build: must be 0 errors, 0 warnings |
 | `make version V=x.y.z` | `scripts/set-version.mjs` |
 | `make clean` | remove `bin/`, `frontend/dist`, `.task/` |
