@@ -16,8 +16,13 @@
 //	  }
 //	}
 //
-// last_slot lets the scheduler drop the repeated autumn DST slot; the values
-// of last_result are defined by the pipeline (milestone 6).
+// last_slot is the instant of the last slot that started a run, with its UTC
+// offset, so the two occurrences of a wall-clock slot in the repeated autumn
+// hour differ: the scheduler uses it to drop the second one (slot.dst_repeat)
+// and never to run the same slot twice. last_run_at is when that run started.
+// last_result is one of the Result* values; last_error is the code of a
+// failure or of a skip reason (slot.missed, slot.paused…), null when the last
+// run went fine. Skips don't change last_slot or last_run_at.
 //
 // Loading: a missing file gives the defaults. A file that can't be read or
 // parsed is not fatal: Load returns the defaults plus a state.read_failed
@@ -51,6 +56,19 @@ type ScheduleState struct {
 	LastError  *ErrorRef `json:"last_error"`
 	LastRunAt  time.Time `json:"last_run_at,omitzero"`
 }
+
+// The values of ScheduleState.LastResult.
+const (
+	// ResultOK: the run completed (pipeline, milestone 6).
+	ResultOK = "ok"
+	// ResultDryRun: the run was only logged (the stub runner used until the
+	// pipeline lands); nothing was sent.
+	ResultDryRun = "dry_run"
+	// ResultSkipped: the slot was not run; LastError holds the reason.
+	ResultSkipped = "skipped"
+	// ResultFailed: the run failed; LastError holds the error.
+	ResultFailed = "failed"
+)
 
 // ErrorRef is an apperr.Error as stored: code and params, no message.
 type ErrorRef struct {

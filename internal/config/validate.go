@@ -57,8 +57,9 @@ func validateSchedule(p string, s *Schedule, ids map[string]bool) error {
 			return invalid(fmt.Sprintf("%s.cadence.days[%d]", p, j), "unknown day %q", d)
 		}
 	}
-	// Cadence values (interval range, HH:MM, window) are the scheduler's
-	// checks (cadence.*), added with milestone 4.
+	// Cadence values (interval range, HH:MM, window, days) are
+	// scheduler.Validate (cadence.*, schedule.no_days): not checked on load,
+	// so a bad hand edit only makes the scheduler ignore that schedule.
 	if err := validateRecipients(p+".recipients", s.Recipients); err != nil {
 		return err
 	}

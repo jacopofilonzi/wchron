@@ -25,8 +25,10 @@
 // structure only: unique non-empty ids, valid enums (config.invalid, with the
 // JSON path of the field). The semantic checks (cadence values, tokens,
 // recipient targets, processor options) belong to the scheduler, tokens,
-// provider and processor packages and are added with their milestones: hook
-// them into Validate, keeping structure checks here.
+// provider and processor packages: the editor runs them on save, and at run
+// time a schedule failing them is skipped with a warning instead of stopping
+// the app (scheduler.Validate for the cadence, milestone 4). Structure
+// checks stay here.
 //
 // Saving (Save) normalizes, validates and writes atomically (temp file in
 // the same dir + fsync + rename, mode 0600): a failure leaves the previous
