@@ -1,5 +1,6 @@
 <script lang="ts">
   import Icon from "./Icon.svelte";
+  import Logo from "./Logo.svelte";
   import Toggle from "./Toggle.svelte";
   import { api, type AppError } from "../lib/api";
   import { t, tError, type Key } from "../lib/i18n.svelte";
@@ -17,7 +18,7 @@
 
 <nav aria-label={t("ui.nav.label")} class="flex w-56 shrink-0 flex-col gap-1 border-r border-border bg-sidebar px-3.5 py-5">
   <div class="flex items-center gap-2.5 px-2.5 pt-1 pb-5">
-    <div aria-hidden="true" class="flex size-7 items-center justify-center rounded-lg bg-ink text-[13px] font-semibold text-on-ink">w</div>
+    <Logo size={28} />
     <span class="text-[15px] font-semibold">{t("ui.app.name")}</span>
   </div>
 
