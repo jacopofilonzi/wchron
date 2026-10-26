@@ -39,17 +39,25 @@ On first start, open **Channels** in the window, add a WhatsApp channel and scan
 Each schedule has one or more recipients (on one or more channels), one or more files and a cadence:
 
 - **Interval**: every N hours and minutes, counted from a start time (default 00:00) and restarting each
-  day, so 1h30 from 08:00 means 08:00, 09:30, 11:00… Optionally only inside a time window
-  (e.g. 08:00–23:00).
+  day, so 1h30 from 08:00 means 08:00, 09:30, 11:00… up to the last one before midnight (from 1 minute
+  to 24 hours). Optionally only inside a time window, both ends included: every hour from 08:00 to
+  20:00 also sends at 20:00. A window can cross midnight (e.g. 22:00–02:00): the part after midnight
+  belongs to the day the window opened, so a window on Mondays only also sends early on Tuesday, and
+  not early on Monday.
 - **Fixed times**: a list of times, e.g. 09:00, 13:30, 18:00.
 - **Days**: any days of the week.
 
 The editor shows the next 5 runs. Each send starts at a random moment in the first 2 minutes after the
-scheduled time.
+scheduled time (the times themselves never drift). Different schedules run at the same time without
+waiting for each other; a schedule never overlaps itself: if its previous run is still going when the
+next time comes, that time is skipped and noted.
 
-**Missed runs are not recovered.** If the PC was asleep or off, the app was closed or the routine was
-paused, that run is skipped and noted in the status page; wchron never sends a burst to catch up. A run
-that would start more than 5 minutes late is skipped too.
+**Missed runs are not recovered.** If the PC was asleep, the clock jumped or the routine was paused,
+those runs are skipped and noted in the status page as one summary per schedule ("skipped sends: 12,
+from 08:15 to 11:00"), not one line per run; wchron never sends a burst to catch up. A run that would
+start more than 5 minutes late is skipped too. Times that passed while wchron was closed are simply not
+counted. A schedule with an invalid cadence (e.g. after editing `config.json` by hand) is ignored and
+logged, the others keep running.
 
 Daylight saving time follows the Windows clock: a run in the hour skipped in spring doesn't happen; a run
 in the hour repeated in autumn happens once.
@@ -171,7 +179,8 @@ removed, the window asks you to scan the QR again.
 - **Activate routine**: pause or resume all schedules (a pause is remembered across restarts).
 - **Keep awake**: keeps the PC from sleeping while wchron runs (the screen can still turn off). It
   starts off at every launch, unless "Keep the PC awake at startup" is on in Settings.
-- Open the window, see the connection state and last send, quit.
+- Open the window, see the connection state and the next scheduled send ("Next: Report vendite
+  14:00", with the day when it's not today), quit.
 
 The icon shows whether the routine is active, paused, sending, in error or with a channel disconnected,
 and whether keep awake is on.

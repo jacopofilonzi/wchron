@@ -302,6 +302,10 @@ i18n lives in one shared catalog used by both Go and the frontend.
   `*time.Location` as a parameter so DST tests can pass `Europe/Rome` explicitly: on Windows,
   `time.LoadLocation` only works where Go is installed, so test files import `time/tzdata` (tests only,
   never the app).
+- Go reads the system time zone once at process start: a time zone change in Windows reaches the scheduler
+  only after a restart of the app (noted in the scheduler package doc).
+- `go test -race` needs cgo (a C compiler); this machine has none, so the scheduler's loop tests run
+  without the race detector here. They are deterministic by design (fake clock, driven through `step()`).
 - Go nil slices and maps reach the frontend as `null`: normalize them in `frontend/src/lib/api.ts`.
 - `frontend/bindings` (`make bindings`) and `frontend/dist` are generated and git-ignored. `main.go` embeds
   `all:frontend/dist`, which must hold a file for `go vet`/`go test` to compile: the Makefile writes a
