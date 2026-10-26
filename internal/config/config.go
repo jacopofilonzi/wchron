@@ -92,7 +92,24 @@ type Recipient struct {
 	Target json.RawMessage `json:"target"`
 	// DisplayName is the last known name, for display only.
 	DisplayName string `json:"display_name"`
+	// Verified is the result of the provider's check of the target (WhatsApp:
+	// the number is on WhatsApp, the group is among the account's groups). A
+	// recipient saved while its channel was not connected is "unknown" and is
+	// checked at the channel's next connection; a "no" is never sent to.
+	Verified Verified `json:"verified"`
 }
+
+// Verified is the state of a recipient's check.
+type Verified string
+
+const (
+	VerifiedUnknown Verified = "unknown"
+	VerifiedYes     Verified = "yes"
+	VerifiedNo      Verified = "no"
+)
+
+// VerifiedStates lists the valid values of Recipient.Verified.
+var VerifiedStates = []Verified{VerifiedUnknown, VerifiedYes, VerifiedNo}
 
 // Schedule sends its files to its recipients at the slots of its cadence.
 type Schedule struct {
@@ -233,6 +250,9 @@ func normalizeRecipients(rs []Recipient) []Recipient {
 	}
 	for i := range rs {
 		rs[i].Target = rawObject(rs[i].Target)
+		if rs[i].Verified == "" {
+			rs[i].Verified = VerifiedUnknown
+		}
 	}
 	return rs
 }

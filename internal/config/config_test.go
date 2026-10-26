@@ -25,7 +25,7 @@ const v1Full = `{
     "id": "s-1", "name": "Daily report", "enabled": true,
     "cadence": {"mode": "interval", "interval": {"hours": 1, "minutes": 30}, "anchor": "08:00",
                 "window": {"start": "08:00", "end": "18:00"}, "times": [], "days": ["mon", "tue", "wed", "thu", "fri"]},
-    "recipients": [{"id": "r-1", "channel_id": "wa-1", "target": {"kind": "group", "jid": "000@g.us"}, "display_name": "Team"}],
+    "recipients": [{"id": "r-1", "channel_id": "wa-1", "target": {"kind": "group", "jid": "000@g.us"}, "display_name": "Team", "verified": "yes"}],
     "caption": "Report {date:DD-MM-YYYY}",
     "files": [{"id": "f-1", "path_pattern": "C:\\Reports\\{date:YYYY-MM-DD}.xlsx", "match": "newest",
                "processor": "xlsx-sheets", "processor_options": {"sheets": ["Summary"]}, "caption": "Only this"}]
@@ -72,7 +72,8 @@ func TestV1LoadsUnchangedAndRoundTrips(t *testing.T) {
 	if c.Settings.Language != i18n.EN || c.Settings.Theme != ThemeDark || !c.Settings.KeepAwakeDefault ||
 		s.Cadence.Window == nil || s.Cadence.Window.End != "18:00" || len(s.Cadence.Days) != 5 ||
 		s.Files[0].Match != MatchNewest || s.Files[0].Caption == nil || *s.Files[0].Caption != "Only this" ||
-		string(s.Recipients[0].Target) != `{"jid":"000@g.us","kind":"group"}` {
+		string(s.Recipients[0].Target) != `{"jid":"000@g.us","kind":"group"}` || s.Recipients[0].Verified != VerifiedYes ||
+		c.Settings.ErrorRecipients[0].Verified != VerifiedUnknown {
 		t.Fatalf("decoded: %+v", c)
 	}
 	if string(c.Channels[0].Settings) != `{"big_id":12345678901234567890}` {
@@ -146,6 +147,7 @@ func TestInvalidStructure(t *testing.T) {
 		`{"schedules": [{"id": "s", "cadence": {"mode": "fixed"}, "files": [{"id": "f", "match": "x"}]}]}`: "schedules[0].files[0].match",
 		`{"schedules": [{"id": "s", "cadence": {"mode": "fixed"}, "recipients": [{"id": "r"}]}]}`:          "schedules[0].recipients[0].channel_id",
 		`{"schedules": [{"cadence": {"mode": "fixed"}}]}`:                                                  "schedules[0].id",
+		`{"settings": {"error_recipients": [{"id": "r", "channel_id": "c", "verified": "maybe"}]}}`:        "settings.error_recipients[0].verified",
 	}
 	for content, field := range cases {
 		p := write(t, content)

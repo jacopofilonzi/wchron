@@ -91,6 +91,9 @@ func validateRecipients(p string, rs []Recipient) error {
 		if r.ChannelID == "" {
 			return invalid(rp+".channel_id", "empty channel id")
 		}
+		if !slices.Contains(VerifiedStates, r.Verified) {
+			return invalid(rp+".verified", "unknown verified state %q", r.Verified)
+		}
 	}
 	return nil
 }
