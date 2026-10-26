@@ -10,7 +10,8 @@ Rules:
   the registry, both catalogs and this file disagree.
 - **None of these is ever sent to a schedule's recipient.** Where a row says "Err", the text goes only to
   the error recipients (`settings.error_recipients`, on any channel), if set.
-- Where: `GUI` inline in the window (form or dialog), `Toast` Windows desktop notification, `Err` message
+- Where: `GUI` inline in the window (form or dialog), `Dialog` native error box at startup (the app then exits
+  without touching the data; title `dialog.fatal.title`), `Toast` Windows desktop notification, `Err` message
   to the error recipients, `Status` status page and log viewer, `Tray` tray icon/status line.
 - Generic codes (`channel.*`, `recipient.*`, `send.*`) hold for every provider; a provider's own codes use
   its prefix (`wa.*` for WhatsApp; later `telegram.*`, `ntfy.*`). `channel`/`recipient` params are the
@@ -22,14 +23,16 @@ Rules:
 
 | Code | Level | Where | Params | Meaning / what to do |
 | --- | --- | --- | --- | --- |
-| `storage.unavailable` | error | Toast | `path` | The data dir can't be created or written. The app doesn't start. |
-| `storage.backup_failed` | error | Toast | `path` | Backup before a migration/upgrade failed. The app doesn't start, to protect the data. Free disk space or check permissions. |
-| `config.read_failed` | error | Toast | `path` | `config.json` exists but can't be read or parsed. The app doesn't start and leaves the file as is; restore it from `backups/`. |
-| `config.write_failed` | error | GUI, Toast | `path` | Saving the configuration failed; the change is not applied. |
-| `config.newer_version` | error | Toast | `found`, `supported` | The file was written by a newer wchron. The app doesn't start and doesn't touch it: install the newer version. |
-| `config.migration_failed` | error | Toast | `from`, `to` | Upgrading the data format failed; the original files are untouched and backed up. |
-| `state.read_failed` | warning | Status | `path` | `state.json` unreadable: last-run info is reset (backup kept). Schedules keep working. |
-| `state.write_failed` | warning | Status | `path` | Last-run info could not be saved. |
+| `storage.unavailable` | error | Dialog | `path` | The data dir (or one of its folders: `channels`, `logs`, `backups`, the temp folder) can't be created or written. The app doesn't start. |
+| `storage.backup_failed` | error | Dialog | `path` | The backup before a migration/upgrade failed (`path`: the backup folder). The app doesn't start, to protect the data, and leaves the data files as they are. Free disk space or check permissions. |
+| `config.read_failed` | error | Dialog | `path` | `config.json` exists but can't be read or parsed. The app doesn't start and leaves the file as is; restore it from `backups/`. |
+| `config.invalid` | error | Dialog | `path`, `field` | `config.json` parses but breaks the structure (`field`: JSON path, e.g. `schedules[2].id`: empty or duplicate id, unknown theme, language, cadence mode, day or match mode), e.g. after a hand edit. The app doesn't start and leaves the file as is. |
+| `config.write_failed` | error | GUI | `path` | Saving the configuration failed; the change is not applied (the previous file is intact). At startup (saving a migrated file) the app doesn't start (Dialog). |
+| `config.newer_version` | error | Dialog | `found`, `supported` | `config.json` or `state.json` was written by a newer wchron. The app doesn't start and doesn't touch it: install the newer version. |
+| `config.migration_failed` | error | Dialog | `from`, `to` | Upgrading the format of `config.json` or `state.json` failed; the app doesn't start and the original files are untouched. |
+| `state.read_failed` | warning | Status | `path` | `state.json` unreadable: last-run info is reset; the bad file is kept as `state.json.corrupt-<timestamp>` next to it. Schedules keep working. |
+| `state.write_failed` | warning | Status | `path` | Last-run info (or the routine pause) could not be saved; it is kept in memory until the next start. |
+| `devenv.invalid` | error | Dialog | `name`, `value` | Development only: an env override (`WCHRON_LOG_LEVEL`, `WCHRON_UPDATE_DISABLED`…) has an invalid value. The app doesn't start. |
 | `instance.already_running` | — | — | — | Not shown: a second launch just focuses the first window. Listed for the log. |
 
 ## Schedule editor (validation)
