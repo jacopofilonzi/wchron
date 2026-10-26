@@ -17,7 +17,7 @@ linked like WhatsApp Web. You can connect several accounts (channels), also of t
 
 ## What it does and doesn't do
 
-- Sends files on a schedule to one number or group per schedule, one file after the other with a short
+- Sends files on a schedule to one or more recipients per schedule, one file after the other with a short
   pause, with an optional caption.
 - Never sends error messages to the recipients: problems are shown as desktop notifications and,
   optionally, sent to one or more "error recipients" (for example your own WhatsApp number).
