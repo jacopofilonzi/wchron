@@ -12,6 +12,9 @@
 //  5. save state.json with last_app_version set to this version (a failure
 //     is only a warning: state.write_failed).
 //
+// Data.FirstRun marks the very first start (no config.json, no state.json):
+// main then turns on the login start (AutostartOnFirstRun).
+//
 // It runs after platform.Paths.Ensure and before any channel is opened, so
 // the backup is a plain copy of closed files. main shows a fatal error with
 // FatalText and exits without touching the data.
@@ -40,6 +43,18 @@ type Data struct {
 	// Warnings are the non-fatal problems met (state.read_failed,
 	// state.write_failed), already logged.
 	Warnings []error
+	// FirstRun: neither config.json nor state.json existed, so this is the
+	// very first start in this data dir (state.json is written at every
+	// start, config.json only on the first change).
+	FirstRun bool
+}
+
+// AutostartOnFirstRun reports whether this start should turn on the login
+// start by itself: only on the first run of an installed copy, never for a
+// dev build or a dev run with its own data dir (WCHRON_DATA_DIR), so a dev
+// machine's Run key is never touched behind the developer's back.
+func AutostartOnFirstRun(d Data, devBuild, dataDirOverridden bool) bool {
+	return d.FirstRun && !devBuild && !dataDirOverridden
 }
 
 // Options are the inputs of Open.
@@ -62,7 +77,7 @@ func Open(o Options) (Data, error) {
 	if err != nil {
 		return Data{}, err
 	}
-	var d Data
+	d := Data{FirstRun: !cl.Exists && !sl.Exists}
 	last := sl.State.LastAppVersion
 	if backup.Needed(backup.Inputs{
 		ConfigExists:   cl.Exists,

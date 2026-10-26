@@ -52,8 +52,11 @@ import (
 var assets embed.FS
 
 func main() {
-	// Until the data dir is known, logs go to stderr only.
-	log := logging.New(os.Stderr, slog.LevelInfo)
+	// Until the data dir is known, logs go to stderr only. The logger is never
+	// replaced (Wails and the second-instance callback hold it, on other
+	// goroutines): its Switch is pointed at the log file later.
+	logSwitch := logging.NewSwitch(logging.New(os.Stderr, slog.LevelInfo).Handler())
+	log := slog.New(logSwitch)
 	// A plain scan instead of the flag package: Wails and Windows may pass
 	// arguments of their own, which must not make the app exit.
 	minimized := slices.Contains(os.Args[1:], platform.MinimizedFlag)
@@ -138,8 +141,9 @@ func main() {
 	if version.Dev {
 		stderr = os.Stderr
 	}
-	log, logFile = logging.Open(logging.Options{Dir: paths.LogsDir(), Level: env.LogLevel, Stderr: stderr})
-	wails.Logger = log
+	fileLog, closer := logging.Open(logging.Options{Dir: paths.LogsDir(), Level: env.LogLevel, Stderr: stderr})
+	logFile = closer
+	logSwitch.Set(fileLog.Handler())
 	log.Info("starting", "version", version.Version, "minimized", minimized, "data_dir", paths.DataDir(), "dev", version.Dev)
 	if err := i18n.LoadError(); err != nil {
 		log.Error("i18n catalog", "err", err)
@@ -161,6 +165,16 @@ func main() {
 	if exe != "" {
 		if autostartOn, err = autostart.Enabled(); err != nil {
 			log.Warn("read autostart", "err", err)
+		}
+		// First start of an installed copy: start at login by default, like
+		// the Settings toggle (never in dev builds or dev data dirs).
+		if !autostartOn && startup.AutostartOnFirstRun(data, version.Dev, env.DataDir != "") {
+			if err := autostart.Enable(); err != nil {
+				log.Warn("enable autostart on first run", "err", err)
+			} else {
+				autostartOn = true
+				log.Info("first run: autostart enabled")
+			}
 		}
 	}
 
@@ -294,6 +308,16 @@ func main() {
 		// After the startup backup (startup.Open), never before: it copies
 		// channels/ as plain files.
 		chans.Start()
+	})
+	// Resume from sleep or hibernation (Wails maps WM_POWERBROADCAST /
+	// PBT_APMRESUMEAUTOMATIC to this common event; it may arrive more than
+	// once, both calls are idempotent): reconnect the channels now instead of
+	// at their next backoff step, and let the scheduler look at the clock
+	// (the slots missed while asleep are skipped, never recovered).
+	wails.Event.OnApplicationEvent(events.Common.SystemDidWake, func(*application.ApplicationEvent) {
+		log.Info("system resumed")
+		chans.Resume()
+		sched.Wake()
 	})
 
 	if err := wails.Run(); err != nil {

@@ -66,8 +66,11 @@ func TestFreshInstall(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if d.BackupDir != "" || len(d.Warnings) != 0 || !d.State.RoutineActive || d.State.LastAppVersion != "0.2.0" {
+	if d.BackupDir != "" || len(d.Warnings) != 0 || !d.State.RoutineActive || d.State.LastAppVersion != "0.2.0" || !d.FirstRun {
 		t.Fatalf("%+v", d)
+	}
+	if !AutostartOnFirstRun(d, false, false) || AutostartOnFirstRun(d, true, false) || AutostartOnFirstRun(d, false, true) {
+		t.Fatal("first run autostart: installed copy only")
 	}
 	if _, err := os.Stat(p.ConfigFile()); !os.IsNotExist(err) {
 		t.Fatal("config.json is written on the first save only")
@@ -78,8 +81,10 @@ func TestFreshInstall(t *testing.T) {
 	if _, err := os.Stat(p.backups); !os.IsNotExist(err) {
 		t.Fatal("no backup on a fresh install")
 	}
-	// Second start, same version: nothing to back up.
-	if d, err := open(p, "0.2.0"); err != nil || d.BackupDir != "" {
+	// Second start, same version: nothing to back up, not a first run any
+	// more (state.json exists even if config.json was never written, so a
+	// login start the user turned off stays off).
+	if d, err := open(p, "0.2.0"); err != nil || d.BackupDir != "" || d.FirstRun || AutostartOnFirstRun(d, false, false) {
 		t.Fatalf("%+v %v", d, err)
 	}
 }
@@ -100,7 +105,7 @@ func TestUpgradeBacksUp(t *testing.T) {
 		read(t, filepath.Join(d.BackupDir, "channels", "wa-1", "session.db")) != "db" {
 		t.Fatal("backup contents")
 	}
-	if d.State.RoutineActive || d.State.LastAppVersion != "0.2.0" || d.Config.Settings.Theme != "dark" {
+	if d.State.RoutineActive || d.State.LastAppVersion != "0.2.0" || d.Config.Settings.Theme != "dark" || d.FirstRun {
 		t.Fatalf("%+v", d)
 	}
 	if read(t, p.ConfigFile()) != cfgV1 {
