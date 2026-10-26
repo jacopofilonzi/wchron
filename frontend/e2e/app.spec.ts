@@ -313,3 +313,27 @@ test("switches between Italian and English", async ({ page }) => {
   await page.getByLabel("Language").selectOption("it");
   await expect(nav(page, "Pianificazioni")).toBeVisible();
 });
+
+for (const size of [{ width: 1120, height: 720 }, { width: 900, height: 600 }]) {
+  test(`schedules list: nothing truncated at ${size.width}×${size.height}`, async ({ page }) => {
+    await page.setViewportSize(size);
+    await openApp(page);
+    const rows = page.getByRole("row").filter({ has: page.getByRole("cell") });
+    await expect(rows.first()).toBeVisible();
+    await shot(page, `schedules-${size.width}`);
+    // Every text in a cell fits its box: it wraps, it never overflows or gets an ellipsis.
+    const overflowing = await page.evaluate(() =>
+      [...document.querySelectorAll('[role="cell"] *')]
+        .filter((el) => el instanceof HTMLElement && el.childElementCount === 0 && el.textContent!.trim() !== "")
+        .filter((el) => {
+          const e = el as HTMLElement;
+          return e.scrollWidth > e.clientWidth + 1 || getComputedStyle(e).textOverflow === "ellipsis";
+        })
+        .map((el) => el.textContent),
+    );
+    expect(overflowing).toEqual([]);
+    // The full text is also in a tooltip.
+    const name = rows.first().getByRole("link").first();
+    await expect(name).toHaveAttribute("title", (await name.textContent())!.trim());
+  });
+}

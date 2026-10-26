@@ -91,6 +91,9 @@
   };
 
   const next = $derived(app.s?.next_run ?? null);
+  // Cells wrap instead of truncating (also at the 900 px minimum window), and
+  // carry their full text in a tooltip.
+  const cols = "grid-cols-[40px_minmax(0,1.3fr)_minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.85fr)_minmax(0,1.7fr)_60px]";
 </script>
 
 {#if route.param !== ""}
@@ -132,7 +135,7 @@
     <div class="card overflow-hidden text-[13px]" role="table" aria-label={t("ui.schedules.list")}>
       <div
         role="row"
-        class="grid grid-cols-[44px_minmax(0,1.5fr)_minmax(0,1.3fr)_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,1.5fr)_64px] gap-3 border-b border-divider px-4 py-2.5 text-[12px] text-muted"
+        class="grid {cols} gap-3 border-b border-divider px-4 py-2.5 text-[12px] text-muted"
       >
         <span role="columnheader"><span class="sr-only">{t("ui.schedules.col.enabled")}</span></span>
         <span role="columnheader">{t("ui.schedules.col.name")}</span>
@@ -148,7 +151,7 @@
         {@const res = results[s.last_result]}
         <div
           role="row"
-          class="grid grid-cols-[44px_minmax(0,1.5fr)_minmax(0,1.3fr)_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,1.5fr)_64px] items-center gap-3 border-b border-divider px-4 py-3.5 last:border-b-0"
+          class="grid {cols} items-center gap-3 border-b border-divider px-4 py-3.5 last:border-b-0"
         >
           <span role="cell">
             <Toggle
@@ -159,35 +162,37 @@
           </span>
           <div role="cell" class="min-w-0">
             <a aria-label={t("ui.schedules.open_named", { name: sc.name })}
-              class="block truncate font-medium text-text no-underline hover:underline {sc.enabled ? '' : 'text-muted'}" href={href("schedules", sc.id)}>{sc.name}</a>
-            <div class="mt-0.5 truncate text-[12px] text-muted">{filesSummary(s)}</div>
+              title={sc.name}
+              class="block font-medium wrap-break-word text-text no-underline hover:underline {sc.enabled ? '' : 'text-muted'}" href={href("schedules", sc.id)}>{sc.name}</a>
+            <div class="mt-0.5 text-[12px] wrap-break-word text-muted" title={filesSummary(s)}>{filesSummary(s)}</div>
           </div>
           <div role="cell" class="min-w-0 {sc.enabled ? 'text-text-soft' : 'text-muted'}">
-            <div class="truncate" title={cadenceSummary(sc.cadence)}>{cadenceSummary(sc.cadence)}</div>
-            <div class="truncate text-[12px] text-muted">{daysSummary(sc.cadence.days ?? [])}</div>
+            <div class="wrap-break-word" title={cadenceSummary(sc.cadence)}>{cadenceSummary(sc.cadence)}</div>
+            <div class="text-[12px] wrap-break-word text-muted" title={daysSummary(sc.cadence.days ?? [])}>{daysSummary(sc.cadence.days ?? [])}</div>
           </div>
           <div role="cell" class="min-w-0">
-            <div class="truncate">{rs.main}</div>
-            {#if rs.sub}<div class="truncate text-[12px] text-muted">{rs.sub}</div>{/if}
+            <div class="wrap-break-word" title={rs.main}>{rs.main}</div>
+            {#if rs.sub}<div class="text-[12px] wrap-break-word text-muted" title={rs.sub}>{rs.sub}</div>{/if}
           </div>
-          <div role="cell" class="tabular-nums">
+          <div role="cell" class="min-w-0 tabular-nums">
             {#if s.invalid}
               <span class="text-danger" title={tError(s.invalid.code, { ...s.invalid.params })}>{t("ui.schedules.invalid")}</span>
             {:else if s.next_run}
-              <span class="font-medium">{when(s.next_run)}</span>
+              <span class="font-medium" title={when(s.next_run)}>{when(s.next_run)}</span>
             {:else}
               <span class="text-muted">—</span>
             {/if}
           </div>
           <div role="cell" class="min-w-0">
             {#if res}
-              <div class="flex items-center gap-1.5 {res.text}">
-                <span class="status-dot size-1.5 {res.dot}" aria-hidden="true"></span>
-                <span class="truncate">{t(res.key)}{s.last_run_at ? ` · ${when(s.last_run_at)}` : ""}</span>
+              {@const label = `${t(res.key)}${s.last_run_at ? ` · ${when(s.last_run_at)}` : ""}`}
+              <div class="flex items-baseline gap-1.5 {res.text}">
+                <span class="status-dot size-1.5 shrink-0 -translate-y-px {res.dot}" aria-hidden="true"></span>
+                <span class="min-w-0 wrap-break-word" title={label}>{label}</span>
               </div>
               {#if s.last_error}
                 {@const text = tError(s.last_error.code, { schedule: sc.name, ...s.last_error.params })}
-                <div class="mt-0.5 line-clamp-2 text-[12px] text-muted" title={text}>{text}</div>
+                <div class="mt-0.5 text-[12px] wrap-break-word text-muted" title={text}>{text}</div>
               {/if}
             {:else}
               <span class="text-muted">{t("ui.schedules.result.never")}</span>
