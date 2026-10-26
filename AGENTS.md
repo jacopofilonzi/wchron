@@ -17,7 +17,7 @@ See "Updating these guidelines" below to align them with the latest version.
 ## What it is
 
 wchron: a tray desktop app that sends files (optionally Excel workbooks reduced to selected sheets) to a
-WhatsApp number or group at scheduled times, through a whatsmeow linked-device session. Stack: Go 1.27 +
+WhatsApp number or group at scheduled times, through a whatsmeow linked-device session. Stack: Go (1.26+, see `go.mod`) +
 Wails 3 (beta), Svelte 5 + TypeScript + Vite + Tailwind 4. Targets: Windows 10/11 only for now; OS-specific
 code stays behind interfaces so Linux/macOS can be added later. UI and backend texts in Italian (default)
 and English. One process, one binary, single instance (a second launch focuses the window); starts at
