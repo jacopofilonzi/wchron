@@ -333,3 +333,34 @@ func FuzzParse(f *testing.F) {
 		_ = tpl.Render(ref, i18n.IT)
 	})
 }
+
+// The examples of README.md "Files and dates in names", so the docs stay true.
+func TestReadmeExamples(t *testing.T) {
+	at := time.Date(2026, 10, 26, 9, 5, 7, 0, time.Local)
+	cases := []struct{ tpl, it, en string }{
+		{"{date}", "2026-10-26", ""},
+		{"{date:DD_MM_YYYY}", "26_10_2026", ""},
+		{"{date-1d:DD_MM_YYYY}", "25_10_2026", ""},
+		{"{date:dddd D MMMM}", "lunedì 26 ottobre", "Monday 26 October"},
+		{"{date@month-start-1m:MMMM YYYY}", "settembre 2026", "September 2026"},
+		{"{date@month-start:DD-MM-YYYY}", "01-10-2026", ""},
+		{"{date@month-start-1d:DD-MM-YYYY}", "30-09-2026", ""},
+		{"{date-1w@week-start:DD/MM} – {date-1w@week-end:DD/MM}", "19/10 – 25/10", ""},
+		{"{date@year-end:YYYY-MM-DD}", "2026-12-31", ""},
+		{"Report {date:HH.mm}", "Report 09.05", ""},
+		{`C:\Reports\vendite_{date:YYYYMMDD}.xlsx`, `C:\Reports\vendite_20261026.xlsx`, ""},
+		{"{{date}} = {date}", "{date} = 2026-10-26", ""},
+	}
+	for _, c := range cases {
+		if got := render(t, c.tpl, at, i18n.IT); got != c.it {
+			t.Errorf("it %q: got %q, want %q", c.tpl, got, c.it)
+		}
+		want := c.en
+		if want == "" {
+			want = c.it
+		}
+		if got := render(t, c.tpl, at, i18n.EN); got != want {
+			t.Errorf("en %q: got %q, want %q", c.tpl, got, want)
+		}
+	}
+}
