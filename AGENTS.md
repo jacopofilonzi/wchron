@@ -133,8 +133,8 @@ i18n lives in one shared catalog used by both Go and the frontend.
   Windows-specific packages and never branches on `runtime.GOOS`.
 - Sessions, tokens and other channel secrets are never logged or stored in plain text (secrets: DPAPI in
   `channels/<id>/`); phone numbers in logs are masked except the last 3 digits.
-- **Upgrading never loses data or stops the service.** Durable data is `config.json` (schedules, settings,
-  trash), `state.json` (last runs) and `channels/<id>/` (WhatsApp `session.db`, encrypted secrets). IDs and formats stay backward compatible.
+- **Upgrading never loses data or stops the service.** Durable data is `config.json` (schedules, channels,
+  settings), `state.json` (last runs) and `channels/<id>/` (WhatsApp `session.db`, encrypted secrets). IDs and formats stay backward compatible.
   Format changes are migration steps appended to `internal/config/migrations.go` (and
   `internal/state/migrations.go`), never edits to one already released (pushed to `main`); each bumps
   `schema_version`. A migration that touches existing data gets a test that starts from a file at the
@@ -172,9 +172,10 @@ i18n lives in one shared catalog used by both Go and the frontend.
   - `modernc.org/sqlite` (no CGO): the driver name is `sqlite`, not `sqlite3`.
   - excelize v2: reads cached formula values, never recalculates.
   - Svelte 5, Vite, Tailwind 4 (`@tailwindcss/vite`, CSS-first config, no `tailwind.config.js`).
-- Deleting user data means moving it to the trash: deleted schedules (and file specs) go to the in-app
-  trash in `config.json`, restorable from the GUI, removed only by an explicit "empty trash". Files on disk
-  that the app owns go to the Windows recycle bin. Temp copies made by processors are not user data.
+- Deleting is permanent, never a trash (agreed for this project): schedules, recipients, file specs and
+  channels are deleted only after a confirmation dialog that names the item ("Are you sure you want to
+  delete …?") and states the consequences (e.g. which schedules lose a recipient when a channel goes).
+  Temp copies made by processors are not user data.
 
 ### UI
 

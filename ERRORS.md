@@ -50,7 +50,7 @@ Rules:
 | `cadence.time_duplicate` | error | GUI | `value` | The same fixed time appears twice. |
 | `recipient.required` | error | GUI | — | No recipient chosen: a schedule needs at least one. |
 | `recipient.duplicate` | error | GUI | `recipient` | The same recipient on the same channel appears twice. |
-| `recipient.channel_missing` | error | GUI, Toast, Err, Status | `recipient` | The recipient's channel was deleted (or is in the trash). At run time that recipient is skipped. |
+| `recipient.channel_missing` | error | GUI, Toast, Err, Status | `recipient` | The recipient's channel no longer exists (e.g. `config.json` edited by hand). At run time that recipient is skipped. |
 | `recipient.check_unavailable` | error | GUI | `channel` | The recipient can't be checked now (its channel is not connected). Connect and save again. |
 | `recipient.target_invalid` | error | GUI | `channel`, `field` | A field of the recipient is missing or malformed for its provider. |
 | `filespec.path_required` | error | GUI | — | A file has no path. |
@@ -136,7 +136,7 @@ Not errors: shown in the schedule's last result and in the log, never as a Toast
 | `wa.logged_out` | error | Toast, Tray, GUI | `channel` | The linked device was removed from the phone or expired. Pair again from the Channels page. |
 | `wa.pair_timeout` | error | GUI | `channel` | QR codes expired without a scan. Start again. |
 | `wa.pair_failed` | error | GUI | `channel` | Pairing refused or interrupted. |
-| `wa.session_corrupt` | error | GUI, Toast | `channel` | The channel's `session.db` can't be opened. It is moved to the recycle bin and a new pairing is needed. |
+| `wa.session_corrupt` | error | GUI, Toast | `channel` | The channel's `session.db` can't be opened. It is renamed to `session.db.corrupt-<timestamp>` in the channel dir and a new pairing is needed. |
 
 ## Error recipients
 
@@ -150,7 +150,6 @@ Not errors: shown in the schedule's last result and in the log, never as a Toast
 | --- | --- | --- | --- | --- |
 | `autostart.failed` | error | GUI | — | Couldn't enable/disable start at login (registry write refused). |
 | `keepawake.failed` | error | Tray, Toast | — | Windows refused to keep the PC awake. |
-| `trash.not_found` | error | GUI | `id` | The item is no longer in the trash. |
 | `logs.read_failed` | error | GUI | — | The log files can't be read. |
 
 ## Updates

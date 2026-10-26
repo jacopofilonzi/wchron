@@ -4,7 +4,7 @@
 // compiles (and `go vet` runs) on Linux and macOS.
 //
 // Planned surface: SleepInhibitor, Autostart (implemented), Notifier (desktop
-// toast), Paths (config, data, log, temp), recycle bin. Single instance is
+// toast), Paths (config, data, log, temp). Single instance is
 // handled by Wails (application.Options.SingleInstance), not here.
 //
 // Keep awake on Windows: SetThreadExecutionState(ES_CONTINUOUS |

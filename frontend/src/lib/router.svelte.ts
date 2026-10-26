@@ -1,6 +1,6 @@
 // A minimal hash router: the five pages need no library. Unknown hashes fall
 // back to the first page.
-export const pages = ["schedules", "status", "channels", "trash", "settings"] as const;
+export const pages = ["schedules", "status", "channels", "settings"] as const;
 export type Page = (typeof pages)[number];
 
 function parse(hash: string): Page {

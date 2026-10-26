@@ -58,7 +58,7 @@ in the hour repeated in autumn happens once.
 (checked to be on WhatsApp when you save), or one of
 your groups, picked from a list. Renaming the group doesn't break the schedule.
 
-**Deleting** a schedule moves it to the trash, where you can restore it until you empty the trash.
+**Deleting** a schedule or a channel is permanent: wchron asks you to confirm first.
 
 ## Files and dates in names
 
@@ -126,7 +126,7 @@ None yet. Anything you need to do before installing a specific version will be l
 
 ## Your data
 
-Everything is in `%APPDATA%\wchron`: `config.json` (schedules, settings, trash), `state.json` (last runs),
+Everything is in `%APPDATA%\wchron`: `config.json` (schedules, channels, settings), `state.json` (last runs),
 `channels\` (the WhatsApp link and other channel credentials: keep it private), `logs\` and `backups\`.
 
 ## Development

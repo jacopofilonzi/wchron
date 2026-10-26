@@ -22,7 +22,7 @@ pipeline, channels, state); the Svelte GUI in a Wails window talks to it through
       aggregation, notifications to the error recipients.
 - [ ] 7. `xlsx-sheets` processor with tests on synthetic workbooks (formulas, missing sheet, locked file,
       no cached values).
-- [ ] 8. GUI screens (channels page, recipient picker), previews, trash, error recipients.
+- [ ] 8. GUI screens (channels page, recipient picker), previews, delete confirmations, error recipients.
 - [ ] 9. Hardening: reconnection, log rotation, installer, release workflow.
 - [ ] 10. Update notification and self-update.
 
@@ -53,7 +53,7 @@ internal/
 ├── app/            (m1) Store (in-memory state, side effects, subscribers) + Service (the Wails bindings) + events
 ├── apperr/         (m1) Error{Code, Params, Err}, codes.go (registry mirrored by ERRORS.md), JSON `{code, params}`
 ├── clock/          Clock interface, real and fake
-├── config/         config.json: types, defaults, validation, atomic save, migrations.go, trash
+├── config/         config.json: types, defaults, validation, atomic save, migrations.go
 ├── state/          state.json: last fired slot/result/error per schedule, migrations.go
 ├── backup/         copies data files to backups/ before migrations and on version change
 ├── devenv/         reads the dev-only env overrides
@@ -72,7 +72,7 @@ internal/
 ├── update/         GitHub release check / download, driven by update.config.json
 ├── version/        (m1) Version constant (set by set-version.mjs)
 ├── tray/           (m1) tray menu, toggles, dynamic icon drawn at run time (Icon(state, keepAwake))
-└── platform/       interfaces + _windows.go / _other.go: SleepInhibitor, Autostart (m1); Paths, Toast, recycle bin,
+└── platform/       interfaces + _windows.go / _other.go: SleepInhibitor, Autostart (m1); Paths, Toast,
                     Protect/Unprotect (DPAPI, for channel secrets).
                     Single instance is Wails' SingleInstance option (in main.go).
 ```
@@ -85,10 +85,11 @@ autostart, theme, language, channels, version}` (`channels`: `none` | `connected
 the worst state among the configured channels). The state lives in memory until milestone 2.
 `frontend/bindings` is generated (`make bindings`, and by every build) and git-ignored.
 
-Planned surface (names final at implementation): schedules CRUD + trash (`ListSchedules`, `SaveSchedule`,
-`TrashSchedule`, `RestoreSchedule`, `EmptyTrash`), `PreviewRuns(cadence, n)`, `PreviewTokens(template)`,
+Planned surface (names final at implementation): schedules CRUD (`ListSchedules`, `SaveSchedule`,
+`DeleteSchedule`), `PreviewRuns(cadence, n)`, `PreviewTokens(template)`,
 `ReadSheets(path)`, `SendNow(id)`, settings get/save, channels (`Providers` with capabilities and schemas,
-`ListChannels`, `SaveChannel`, `TrashChannel`, `RestoreChannel`, `ChannelStatus`, `StartPairing(id)`,
+`ListChannels`, `SaveChannel`, `DeleteChannel` (returns the affected schedules first via `ChannelUsage`),
+`ChannelStatus`, `StartPairing(id)`,
 `Logout(id)`, `ValidateTarget(channel, target)`, `ListTargets(channel)`), `Logs(filter)`, `CheckUpdate`,
 `ProcessorSchemas`.
 Errors come back as `apperr.Error` serialized as `{code, params}`.
@@ -104,7 +105,7 @@ All under the data dir (default `%APPDATA%\wchron`, override `WCHRON_DATA_DIR`):
 
 | Path | Content |
 | --- | --- |
-| `config.json` | `schema_version`, `settings`, `schedules[]`, `trash[]` (fields below) |
+| `config.json` | `schema_version`, `settings`, `channels[]`, `schedules[]` (fields below) |
 | `state.json` | `schema_version`, per schedule: last fired slot, last result, last error |
 | `channels/<id>/` | per-channel data: WhatsApp `session.db` (whatsmeow, `modernc.org/sqlite`), DPAPI-encrypted secrets of other providers |
 | `logs/` | rotating `wchron.log` files |
@@ -120,7 +121,6 @@ Temp copies for processors go in `%TEMP%\wchron\` and are removed after each sen
   No time zone setting: always the system one.
 - `channels[]`: Channel
 - `schedules[]`: Schedule
-- `trash[]`: `{ deleted_at, kind: "schedule" | "channel", item }`, restorable until "empty trash"
 
 **Channel** (one configured account of a provider; several per provider allowed)
 
@@ -175,7 +175,7 @@ install timing (it knows the scheduler).
 ## Frontend (`frontend/src`)
 
 Layout (chosen from the mockups, "Sidebar chiara"): fixed 224 px left sidebar (Schedules, Status and
-log, Channels, Trash, Settings) with the channels state and the routine toggle at its bottom; pages are a
+log, Channels, Settings) with the channels state and the routine toggle at its bottom; pages are a
 22 px title plus white cards/tables on a light grey ground. Themes: light, dark and system (follows
 Windows), all from the semantic tokens in `app.css`, switched by `data-theme` on `<html>`. Svelte 5
 runes, TypeScript strict, Tailwind 4 (`@tailwindcss/vite`), Inter from `@fontsource-variable/inter`.
@@ -191,9 +191,8 @@ Routing is a minimal hash router (`#/schedules`, `#/settings`…). (m1) marks wh
 | `pages/Schedules.svelte` | list + editor (cadence, recipients on any channel, caption, files, next 5 runs, send now); m1: placeholder |
 | `pages/Status.svelte` | connection, last runs, errors, log viewer; m1: placeholder |
 | `pages/Settings.svelte` | error recipients, autostart, keep awake, language, theme, updates; m1: theme, language, autostart, keep awake, version |
-| `pages/Channels.svelte` | channels list with status, add channel (pick provider → its setup component), rename, trash; m1: placeholder |
+| `pages/Channels.svelte` | channels list with status, add channel (pick provider → its setup component), rename, delete (with confirmation); m1: placeholder |
 | `providers/<type>/` | per-provider UI: setup (WhatsApp: QR pairing, re-pair, logout) and target picker |
-| `pages/Trash.svelte` | deleted schedules: restore, empty; m1: placeholder |
 | `lib/api.ts` | (m1) the only module calling the bindings: `AppError` `{code, params}` mapping, null normalization, `onState` |
 | `lib/state.svelte.ts` | (m1) Snapshot mirrored from Go (calls + `app:state` events), applies theme and language |
 | `lib/router.svelte.ts` | (m1) hash router |

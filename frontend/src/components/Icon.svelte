@@ -12,8 +12,6 @@
     <path d="M4 19V5M4 19h16M8 15l4-4 3 3 5-6" />
   {:else if name === "channels"}
     <path d="M21 12a8 8 0 0 1-11.8 7L4 20l1-5A8 8 0 1 1 21 12z" />
-  {:else if name === "trash"}
-    <path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3" />
   {:else}
     <circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M5 19l2-2M17 7l2-2" />
   {/if}
