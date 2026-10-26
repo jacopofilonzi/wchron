@@ -3,9 +3,11 @@
 // in `_windows.go` files and `_other.go` holds stubs so every package still
 // compiles (and `go vet` runs) on Linux and macOS.
 //
-// Surface: SleepInhibitor, Autostart, Paths (data dir layout, paths.go) and
-// FatalDialog (the startup error box, MessageBoxW) are implemented; Notifier
-// (desktop toast) and Protect/Unprotect (DPAPI) come later. Single instance is
+// Surface: SleepInhibitor, Autostart, Paths (data dir layout, paths.go),
+// FatalDialog (the startup error box, MessageBoxW) and OpenShared / IsLocked
+// (files.go: reading the originals without disturbing Excel) are implemented;
+// Protect/Unprotect (DPAPI) come later. The desktop toast is the Wails
+// notifications service, adapted in internal/toast. Single instance is
 // handled by Wails (application.Options.SingleInstance), not here.
 //
 // Keep awake on Windows: SetThreadExecutionState(ES_CONTINUOUS |
