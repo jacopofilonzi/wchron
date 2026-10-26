@@ -63,18 +63,83 @@ your groups, picked from a list. Renaming the group doesn't break the schedule.
 ## Files and dates in names
 
 A file path can contain date tokens, filled in at send time, and wildcards (`*`, `?`) in the file name.
-The same tokens work in captions and in Excel sheet names. The editor shows the value each token has right
-now. The final syntax will be documented here; it will look like:
+The same tokens work in captions and in Excel sheet names. The editor shows what the text becomes right
+now, and points at the exact character when something is wrong.
 
-| Token | Example result |
+### Tokens
+
+A token is written in braces: `{date}`, optionally with modifiers that move the date and a format after
+a colon:
+
+```text
+{date<modifiers>:<format>}
+```
+
+Everything outside braces is copied as it is. Write `{{` for a literal `{` and `}}` for a literal `}`.
+The date is the one of the scheduled send (the slot time, in the PC's time zone), not the moment the
+file happens to be processed.
+
+**Modifiers** come right after `date`, as many as you like, applied left to right:
+
+| Modifier | Meaning |
 | --- | --- |
-| `{date:YYYY-MM-DD}` | `2026-10-26` |
-| `{date-1d:DD_MM_YYYY}` | yesterday, `25_10_2026` |
-| `{date:dddd}` | `lunedì` / `Monday` |
-| `{date:MMMM}` | `ottobre` / `October` |
-| `{date@month-start:DD-MM-YYYY}` | `01-10-2026` |
+| `+N` / `-N` with `d`, `w`, `m`, `y` | N days, weeks, months or years later / earlier (`-1d`, `+2w`, `-1m`, `+1y`; N up to 4 digits). Months and years stop at the last day of the month: 31 January `+1m` is 28 (or 29) February. |
+| `@month-start` / `@month-end` | first / last day of the month |
+| `@week-start` / `@week-end` | Monday / Sunday of the week |
+| `@year-start` / `@year-end` | 1 January / 31 December |
 
-Write `{{` and `}}` for literal braces.
+Order matters: `{date@month-start-1d}` is the last day of the previous month, `{date-1d@month-start}`
+the first day of yesterday's month. Modifiers change only the date: hours, minutes and seconds stay those
+of the send time.
+
+**Format** (after `:`; without one it is `YYYY-MM-DD`). Names follow the app language:
+
+| Letters | Meaning | Example (it / en) |
+| --- | --- | --- |
+| `YYYY` | year | `2026` |
+| `YY` | year, 2 digits | `26` |
+| `MMMM` | month name | `ottobre` / `October` |
+| `MMM` | short month name | `ott` / `Oct` |
+| `MM` | month, 2 digits | `10` |
+| `M` | month | `10` |
+| `DD` | day, 2 digits | `05` |
+| `D` | day | `5` |
+| `dddd` | weekday name | `lunedì` / `Monday` |
+| `ddd` | short weekday name | `lun` / `Mon` |
+| `HH` | hour (00–23), 2 digits | `09` |
+| `H` | hour (0–23) | `9` |
+| `mm` | minutes, 2 digits | `05` |
+| `ss` | seconds, 2 digits | `07` |
+
+The longest code wins (`MMMM` is the month name, not `MM` twice). Any other Latin letter is an error;
+everything else (`-`, `_`, `.`, `/`, spaces, digits, accented letters…) is copied as it is. Italian names
+are lowercase (`lunedì`, `gennaio`), English ones capitalized (`Monday`, `January`). Remember that `:` and
+`/` are not allowed in Windows file names: use them in captions only.
+
+### Examples
+
+For a send on Monday 26 October 2026 at 09:05:07, with the app in Italian (English in brackets where it
+differs):
+
+| Template | Result |
+| --- | --- |
+| `{date}` | `2026-10-26` |
+| `{date:DD_MM_YYYY}` | `26_10_2026` |
+| `{date-1d:DD_MM_YYYY}` | `25_10_2026` (yesterday) |
+| `{date:dddd D MMMM}` | `lunedì 26 ottobre` (`Monday 26 October`) |
+| `{date@month-start-1m:MMMM YYYY}` | `settembre 2026` (`September 2026`): last month |
+| `{date@month-start:DD-MM-YYYY}` | `01-10-2026` |
+| `{date@month-start-1d:DD-MM-YYYY}` | `30-09-2026`: last day of last month |
+| `{date-1w@week-start:DD/MM}` – `{date-1w@week-end:DD/MM}` | `19/10` – `25/10`: last week |
+| `{date@year-end:YYYY-MM-DD}` | `2026-12-31` |
+| `Report {date:HH.mm}` | `Report 09.05` |
+| `C:\Reports\vendite_{date:YYYYMMDD}.xlsx` | `C:\Reports\vendite_20261026.xlsx` |
+| `{{date}} = {date}` | `{date} = 2026-10-26` |
+
+If a template is wrong, the editor tells you what and where (the character position), e.g. an unclosed
+`{`, an unknown format letter or modifier; [ERRORS.md](ERRORS.md) lists the `token.*` messages.
+
+### Wildcards
 
 If a wildcard matches several files, by default nothing is sent and you get a notification; for each file
 you can choose to send the newest match or all matches instead.

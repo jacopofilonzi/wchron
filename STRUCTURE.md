@@ -6,8 +6,8 @@ one or more channels. Delivery goes through provider plug-ins: WhatsApp (whatsme
 Telegram/ntfy possible later without structural changes. One Go process holds the core (scheduler,
 pipeline, channels, state); the Svelte GUI in a Wails window talks to it through generated bindings and events.
 
-> Status: milestones 1 (skeleton) and 2 (data, logging) are in place; the rest of this file is the planned
-> layout. Packages and files that exist today are marked **(m1)** / **(m2)**. Update this file as each
+> Status: milestones 1 (skeleton), 2 (data, logging) and 3 (tokens) are in place; the rest of this file is the
+> planned layout. Packages and files that exist today are marked **(m1)** / **(m2)** / **(m3)**. Update this file as each
 > milestone lands.
 
 ## Milestones
@@ -16,7 +16,7 @@ pipeline, channels, state); the Svelte GUI in a Wails window talks to it through
       instance, autostart, Makefile, i18n catalog, version script.
 - [x] 2. Data dir, config, state, migrations + backup, logging (rotating files, reader, masking), platform
       paths and fatal dialog, error registry.
-- [ ] 3. Token engine with tests (Italian names, offsets, escaping).
+- [x] 3. Token engine with tests (Italian names, offsets, escaping).
 - [ ] 4. Scheduler with tests (interval, fixed times, window, days, jitter, skipped slots, DST both ways, fake clock).
 - [ ] 5. Provider layer (interface, registry, channels, fake provider, DPAPI secrets) + WhatsApp provider:
       QR pairing, session persistence, number check, group list, document send.
@@ -55,7 +55,7 @@ internal/
 ├── app/            (m1, m2) Store (state loaded from config/state, persisted on change, side effects,
 │                   subscribers) + Service (the Wails bindings) + events
 ├── apperr/         (m1) Error{Code, Params, Err}, codes.go (registry mirrored by ERRORS.md), JSON `{code, params}`
-├── clock/          Clock interface, real and fake
+├── clock/          (m3) Clock interface (Now), Real, Fake (Set/Advance) for tests
 ├── config/         (m2) config.json: types, defaults, normalization, structural validation, atomic save,
 │                   migrations.go; PeekLanguage for the startup dialog
 ├── state/          (m2) state.json: routine pause, last app version, per schedule last slot/result/error,
@@ -68,7 +68,8 @@ internal/
 ├── logging/        (m2) slog: JSON lines in logs/wchron.log (lumberjack: 5 MB × 5 files) + stderr text in
 │                   dev builds; Read (newest first across rotated files, level filter); MaskPhone
 ├── i18n/           (m1) T(lang, key, params) over the locales catalog
-├── tokens/         date token engine (paths, captions, sheet names), validation, preview
+├── tokens/         (m3) date token engine (paths, captions, sheet names): Parse → Template.Render(t, lang),
+│                   positioned token.* errors; syntax in the package doc and README.md
 ├── scheduler/      cadence → slots (interval, fixed times, window, days), jitter, DST, tolerance, next N runs
 ├── resolver/       path pattern → concrete file(s); glob match mode: error | newest | all
 ├── processor/      Processor interface + registry; passthrough/, xlsxsheets/
@@ -96,12 +97,14 @@ keep_awake, keep_awake_default, autostart, theme, language, channels, version}` 
 `connected` | `disconnected`, the worst state among the configured channels). Theme, language and the
 keep-awake default are saved to `config.json` (on failure `config.write_failed` and the change is rolled
 back); the routine pause to `state.json` (a failure only logs `state.write_failed`).
+`PreviewTokens(template)` (m3) renders a token template for now (`clock.Real`, injected in main) in the
+current language; a malformed one returns its `token.*` error with `pos` (1-based character).
 `Logs(level, limit)` (m2) returns the most recent log entries `{time, level, msg, attrs}`, newest first
 (`level`: minimum, `""` for all; `limit` 0 = 200, max 5000; `logs.read_failed`); its viewer is milestone 8.
 `frontend/bindings` is generated (`make bindings`, and by every build) and git-ignored.
 
 Planned surface (names final at implementation): schedules CRUD (`ListSchedules`, `SaveSchedule`,
-`DeleteSchedule`), `PreviewRuns(cadence, n)`, `PreviewTokens(template)`,
+`DeleteSchedule`), `PreviewRuns(cadence, n)`,
 `ReadSheets(path)`, `SendNow(id)`, settings get/save, channels (`Providers` with capabilities and schemas,
 `ListChannels`, `SaveChannel`, `DeleteChannel` (returns the affected schedules first via `ChannelUsage`),
 `ChannelStatus`, `StartPairing(id)`,
@@ -226,7 +229,7 @@ Routing is a minimal hash router (`#/schedules`, `#/settings`…). (m1) marks wh
 | `pages/Settings.svelte` | error recipients, autostart, keep awake, language, theme, updates; m1: theme, language, autostart, keep awake, version; m2: keep awake at startup |
 | `pages/Channels.svelte` | channels list with status, add channel (pick provider → its setup component), rename, delete (with confirmation); m1: placeholder |
 | `providers/<type>/` | per-provider UI: setup (WhatsApp: QR pairing, re-pair, logout) and target picker |
-| `lib/api.ts` | (m1) the only module calling the bindings: `AppError` `{code, params}` mapping, null normalization, `onState`; (m2) `logs` |
+| `lib/api.ts` | (m1) the only module calling the bindings: `AppError` `{code, params}` mapping, null normalization, `onState`; (m2) `logs`; (m3) `previewTokens` |
 | `lib/state.svelte.ts` | (m1) Snapshot mirrored from Go (calls + `app:state` events), applies theme and language |
 | `lib/router.svelte.ts` | (m1) hash router |
 | `lib/i18n.svelte.ts` | (m1) `t()` / `tError()` over `../locales/*.json` (it typed as `typeof en`), current language |
