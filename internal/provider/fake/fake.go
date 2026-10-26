@@ -103,6 +103,10 @@ type Channel struct {
 
 	// ConnectErr makes Connect fail (status disconnected, retryable).
 	ConnectErr error
+	// OnConnect, when set, runs inside Connect after it read the channel's
+	// state and before it reports the result, outside the lock (to hold a
+	// connection attempt in flight).
+	OnConnect func()
 	// Validate replaces the default target check while connected.
 	Validate func(raw json.RawMessage) (json.RawMessage, string, error)
 	// Targets is what ListTargets returns.
@@ -152,8 +156,11 @@ func (c *Channel) Status() provider.Status {
 func (c *Channel) Connect(context.Context) error {
 	c.mu.Lock()
 	c.Connects++
-	paired, err := c.paired, c.ConnectErr
+	paired, err, on := c.paired, c.ConnectErr, c.OnConnect
 	c.mu.Unlock()
+	if on != nil {
+		on()
+	}
 	switch {
 	case !paired:
 		c.SetStatus(provider.Status{State: provider.StateNotPaired})

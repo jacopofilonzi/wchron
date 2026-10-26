@@ -164,6 +164,11 @@ type managed struct {
 	cancelPair context.CancelFunc
 	pairing    bool
 	verifying  bool
+	// connMu serializes the connection attempts and the pairing starts of
+	// the channel: a Connect still running when a pairing starts would
+	// otherwise report "not paired" after the pairing succeeded. Taken
+	// before m.mu, never while holding it.
+	connMu sync.Mutex
 }
 
 // NewManager returns a Manager; it opens nothing until Start.
@@ -280,7 +285,16 @@ func (m *Manager) connect(id string) {
 		m.mu.Unlock()
 		return
 	}
+	m.mu.Unlock()
+	mc.connMu.Lock()
+	defer mc.connMu.Unlock()
+	m.mu.Lock()
 	ch := mc.ch
+	if ch == nil || m.closed || mc.pairing || m.chans[id] != mc {
+		// Closed, deleted or being paired meanwhile (the pairing connects it).
+		m.mu.Unlock()
+		return
+	}
 	m.mu.Unlock()
 	if err := ch.Connect(m.ctx); err != nil {
 		m.o.Log.Warn("connect channel", "channel", id, "err", err)
@@ -515,9 +529,18 @@ func (m *Manager) RenameChannel(id, name string) (ChannelInfo, error) {
 func (m *Manager) StartPairing(id string) (ChannelInfo, error) {
 	m.mu.Lock()
 	mc, err := m.get(id)
+	m.mu.Unlock()
 	if err != nil {
-		m.mu.Unlock()
 		return ChannelInfo{}, err
+	}
+	// Wait for a connection attempt in progress; the ones that start later
+	// see mc.pairing and skip.
+	mc.connMu.Lock()
+	defer mc.connMu.Unlock()
+	m.mu.Lock()
+	if m.chans[id] != mc {
+		m.mu.Unlock()
+		return ChannelInfo{}, apperr.New(apperr.ChannelNotFound, fmt.Errorf("channel %q deleted", id)).With("id", id)
 	}
 	if mc.ch == nil && mc.cfg.Enabled && !m.openLocked(mc) {
 		info := infoLocked(mc)
@@ -610,6 +633,38 @@ func (m *Manager) followPairing(id string, ctx context.Context, cancel context.C
 			m.publish(id)
 			return
 		}
+	}
+}
+
+// Resume reconnects at once, with the backoff reset, every open channel
+// waiting for a reconnect; the others only get their backoff reset. Called
+// when the PC wakes up from sleep or hibernation: the planned retry may be
+// minutes away, and the network is usually back by then. Calling it twice
+// is harmless (a channel already connecting is not retryable).
+func (m *Manager) Resume() {
+	m.mu.Lock()
+	if m.closed {
+		m.mu.Unlock()
+		return
+	}
+	var ids []string
+	for _, id := range m.order {
+		mc := m.chans[id]
+		if mc.ch == nil || mc.pairing {
+			continue
+		}
+		mc.backoff = 0
+		if retryable(mc.status) {
+			m.stopRetryLocked(mc)
+			ids = append(ids, id)
+		}
+	}
+	m.mu.Unlock()
+	if len(ids) > 0 {
+		m.o.Log.Info("resumed: reconnecting now", "channels", len(ids))
+	}
+	for _, id := range ids {
+		go m.connect(id)
 	}
 }
 

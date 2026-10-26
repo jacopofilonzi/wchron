@@ -80,9 +80,16 @@ func TestChannelBindings(t *testing.T) {
 	fp := fake.New()
 	fp.Unpaired = true
 	reg := provider.NewRegistry(fp)
-	var events []provider.PairingEvent
-	mgr := provider.NewManager(provider.Options{Registry: reg, Dir: t.TempDir(), Store: st, OnChange: st.SetChannels,
-		OnPairing: func(p provider.PairingEvent) { events = append(events, p) }})
+	// Woken by every Snapshot change: the waits below follow the events,
+	// with a deadline only as a failure guard.
+	changed := make(chan struct{}, 1)
+	st.Subscribe(func(Snapshot) {
+		select {
+		case changed <- struct{}{}:
+		default:
+		}
+	})
+	mgr := provider.NewManager(provider.Options{Registry: reg, Dir: t.TempDir(), Store: st, OnChange: st.SetChannels})
 	defer mgr.Close()
 	mgr.Start()
 	svc := NewService(st, reg, mgr, nil, t.TempDir(), clock.Real{})
@@ -94,17 +101,18 @@ func TestChannelBindings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	guard := time.After(30 * time.Second)
 	waitState := func(want provider.State) {
 		t.Helper()
-		deadline := time.Now().Add(3 * time.Second)
 		for {
 			if l := st.Snapshot().ChannelList; len(l) == 1 && l[0].Status.State == want {
 				return
 			}
-			if time.Now().After(deadline) {
+			select {
+			case <-changed:
+			case <-guard:
 				t.Fatalf("channel never reached %s: %+v", want, st.Snapshot().ChannelList)
 			}
-			time.Sleep(2 * time.Millisecond)
 		}
 	}
 	waitState(provider.StateNotPaired)

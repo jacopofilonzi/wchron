@@ -501,3 +501,81 @@ func TestPendingRecipientsAreVerifiedOnConnect(t *testing.T) {
 		t.Fatalf("each target is checked once, verified ones never: %v", calls)
 	}
 }
+
+// A connection attempt still in flight when a pairing starts must not report
+// "not paired" after the pairing succeeded (the flaky TestChannelBindings):
+// the pairing waits for it.
+func TestPairingWaitsForAConnectInFlight(t *testing.T) {
+	e := newEnv(t, config.Config{})
+	e.p.Unpaired = true
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	e.p.OnOpen = func(c *fake.Channel) {
+		c.OnConnect = func() {
+			once.Do(func() { close(entered); <-release })
+		}
+	}
+	info, err := e.m.CreateChannel(fake.Type, "Test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-entered // the connect after create has read "not paired" and is held
+	started := make(chan error, 1)
+	go func() {
+		_, err := e.m.StartPairing(info.ID)
+		started <- err
+	}()
+	// Not a synchronization: it only catches a pairing that doesn't wait.
+	select {
+	case err := <-started:
+		t.Fatalf("pairing started during a connect in flight: %v", err)
+	case <-time.After(20 * time.Millisecond):
+	}
+	close(release)
+	if err := <-started; err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "paired", func() bool { return e.state(info.ID) == provider.StateConnected })
+	waitFor(t, "pairing done", func() bool { e.mu.Lock(); defer e.mu.Unlock(); return len(e.pairings) == 2 })
+	if s := e.state(info.ID); s != provider.StateConnected {
+		t.Fatalf("state after pairing: %s", s)
+	}
+}
+
+func TestResumeReconnectsAtOnceWithTheBackoffReset(t *testing.T) {
+	e := newEnv(t, config.Config{Channels: []config.Channel{ch("a"), ch("b")}})
+	e.m.Start()
+	a, b := e.p.Channel("a"), e.p.Channel("b")
+	waitFor(t, "connected", func() bool {
+		return e.state("a") == provider.StateConnected && e.state("b") == provider.StateConnected
+	})
+	a.Edit(func(c *fake.Channel) { c.ConnectErr = errors.New("offline") })
+	a.SetStatus(provider.Status{State: provider.StateDisconnected, Retry: true, Account: fake.Account})
+	for i := 0; i < 3; i++ {
+		waitFor(t, "a retry", func() bool { return len(e.timers.Delays()) > i })
+		e.timers.fire()
+	}
+	waitFor(t, "a fourth retry", func() bool { return len(e.timers.Delays()) > 3 })
+	if d := e.timers.Delays()[3]; d != 40*time.Second {
+		t.Fatalf("delay before resume: %v", d)
+	}
+	// The PC wakes up and the network is back: no waiting for the timer.
+	a.Edit(func(c *fake.Channel) { c.ConnectErr = nil })
+	var connectsB int
+	b.Edit(func(c *fake.Channel) { connectsB = c.Connects })
+	e.m.Resume()
+	waitFor(t, "reconnected", func() bool { return e.state("a") == provider.StateConnected })
+	if n := e.timers.fire(); n != 0 {
+		t.Fatalf("the planned retry must be cancelled, %d fired", n)
+	}
+	b.Edit(func(c *fake.Channel) {
+		if c.Connects != connectsB {
+			t.Errorf("a connected channel is left alone: %d connects, was %d", c.Connects, connectsB)
+		}
+	})
+	a.SetStatus(provider.Status{State: provider.StateDisconnected, Retry: true})
+	waitFor(t, "a new retry", func() bool { return len(e.timers.Delays()) > 4 })
+	if d := e.timers.Delays()[4]; d != 5*time.Second {
+		t.Fatalf("after resume the backoff restarts at 5s, got %v", d)
+	}
+}

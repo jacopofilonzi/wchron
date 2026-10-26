@@ -27,7 +27,11 @@
 //
 // The Manager (manager.go) owns the lifecycle of every configured channel:
 // open, connect, reconnect, pairing, logout, delete, target checks, and the
-// recipients' pending verifications (config.Recipient.Verified).
+// recipients' pending verifications (config.Recipient.Verified). One
+// connection attempt at a time per channel, and none while a pairing starts
+// (a late "not paired" would overwrite the pairing's success). Resume (after
+// the PC wakes up) reconnects the waiting channels at once and resets their
+// backoff.
 //
 // Deleting a channel (after the GUI's confirmation, which lists Usage)
 // closes it, logs out where it has a session and is connected (WhatsApp:
