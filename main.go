@@ -62,7 +62,7 @@ func main() {
 	store := app.NewStore(inhibitor, autostart, autostartOn)
 	wails := application.New(application.Options{
 		Name:         "wchron",
-		Description:  "Scheduled file sending to WhatsApp",
+		Description:  "Scheduled file sending to WhatsApp and other channels",
 		Services:     []application.Service{application.NewService(app.NewService(store))},
 		Assets:       application.AssetOptions{Handler: application.AssetFileServerFS(assets)},
 		Logger:       log,

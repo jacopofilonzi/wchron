@@ -32,12 +32,16 @@ const (
 	ThemeDark   Theme = "dark"
 )
 
-// WAState is the WhatsApp session state shown in the sidebar and the tray.
-type WAState string
+// ChannelsState sums up the delivery channels (WhatsApp, later Telegram,
+// ntfy…) for the sidebar and the tray: the worst state among the configured ones.
+type ChannelsState string
 
 const (
-	// WADisconnected is the only state until the WhatsApp layer lands (milestone 5).
-	WADisconnected WAState = "disconnected"
+	// ChannelsNone: no channel configured yet (the only state until the
+	// providers land, milestone 5).
+	ChannelsNone         ChannelsState = "none"
+	ChannelsConnected    ChannelsState = "connected"
+	ChannelsDisconnected ChannelsState = "disconnected"
 )
 
 // Snapshot is the whole runtime state, sent to the frontend on every change.
@@ -47,7 +51,7 @@ type Snapshot struct {
 	Autostart     bool      `json:"autostart"`
 	Theme         Theme     `json:"theme"`
 	Language      i18n.Lang `json:"language"`
-	WhatsApp      WAState   `json:"whatsapp"`
+	Channels      ChannelsState `json:"channels"`
 	Version       string    `json:"version"`
 }
 
@@ -69,7 +73,7 @@ func NewStore(inh platform.SleepInhibitor, auto platform.Autostart, autostartOn 
 			Autostart:     autostartOn,
 			Theme:         ThemeSystem,
 			Language:      i18n.Default,
-			WhatsApp:      WADisconnected,
+			Channels:      ChannelsNone,
 			Version:       version.Version,
 		},
 		inhibitor: inh,

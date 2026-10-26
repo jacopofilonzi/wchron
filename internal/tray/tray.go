@@ -1,14 +1,14 @@
 // Package tray is the system tray icon and menu.
 //
 // Menu: checkbox "Activate routine" (global pause/resume), checkbox "Keep
-// awake", a disabled status line (WhatsApp state; the last send comes with the
+// awake", a disabled status line (channels state; the last send comes with the
 // pipeline), "Open window", "Quit". Labels come from the catalog (`tray.*`) and
 // are relabelled in place when the language changes.
 //
 // Left click opens and focuses the window, right click opens the menu.
 //
 // Icon states (see Icon and stateFor): active, paused, sending, error,
-// WhatsApp disconnected, plus a marker when keep-awake is on. The icon is drawn
+// channels disconnected (or none configured), plus a marker when keep-awake is on. The icon is drawn
 // at run time and replaced on every state change.
 //
 // Every toggle goes through app.Store, and the tray redraws from the Store's
@@ -90,12 +90,12 @@ func (t *Tray) apply(s app.Snapshot) {
 	l := s.Language
 	t.routine.SetLabel(i18n.T(l, "tray.routine", nil)).SetChecked(s.RoutineActive)
 	t.keepAwake.SetLabel(i18n.T(l, "tray.keepawake", nil)).SetChecked(s.KeepAwake)
-	wa := i18n.T(l, "tray.wa."+string(s.WhatsApp), nil)
-	t.status.SetLabel(i18n.T(l, "tray.status.whatsapp", map[string]string{"state": wa}))
+	ch := i18n.T(l, "tray.channels."+string(s.Channels), nil)
+	t.status.SetLabel(i18n.T(l, "tray.status.channels", map[string]string{"state": ch}))
 	t.open.SetLabel(i18n.T(l, "tray.open", nil))
 	t.quit.SetLabel(i18n.T(l, "tray.quit", nil))
 
-	st := stateFor(s.RoutineActive, s.WhatsApp != app.WADisconnected)
+	st := stateFor(s.RoutineActive, s.Channels == app.ChannelsConnected)
 	tip := i18n.T(l, "tray.tooltip", map[string]string{"state": i18n.T(l, stateKey[st], nil)})
 	if s.KeepAwake {
 		tip = i18n.T(l, "tray.tooltip.keepawake", map[string]string{"tooltip": tip})

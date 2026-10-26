@@ -32,7 +32,7 @@
   {#if app.s}
     <div class="card flex flex-col gap-2.5 rounded-[10px] p-3 text-[13px]">
       <div class="flex items-center gap-2">
-        <span class="status-dot bg-warning"></span>{t("ui.wa.disconnected")}
+        <span class="status-dot bg-warning"></span>{t("ui.channels.none")}
       </div>
       <div class="flex items-center justify-between">
         <span>{t("ui.routine.toggle")}</span>

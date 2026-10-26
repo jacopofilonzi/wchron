@@ -4,11 +4,11 @@
   import Settings from "./pages/Settings.svelte";
   import Status from "./pages/Status.svelte";
   import Trash from "./pages/Trash.svelte";
-  import WhatsApp from "./pages/WhatsApp.svelte";
+  import Channels from "./pages/Channels.svelte";
   import { route, startRouter } from "./lib/router.svelte";
   import { startState } from "./lib/state.svelte";
 
-  const views = { schedules: Schedules, status: Status, whatsapp: WhatsApp, trash: Trash, settings: Settings };
+  const views = { schedules: Schedules, status: Status, channels: Channels, trash: Trash, settings: Settings };
   const View = $derived(views[route.page]);
 
   $effect(() => startRouter());

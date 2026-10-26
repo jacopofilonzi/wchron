@@ -39,7 +39,7 @@ func (f *fakeAutostart) Disable() error { f.on = false; return nil }
 
 func TestDefaults(t *testing.T) {
 	s := NewStore(&fakeInhibitor{}, &fakeAutostart{}, true).Snapshot()
-	if !s.RoutineActive || s.KeepAwake || !s.Autostart || s.Theme != ThemeSystem || s.Language != i18n.IT || s.WhatsApp != WADisconnected {
+	if !s.RoutineActive || s.KeepAwake || !s.Autostart || s.Theme != ThemeSystem || s.Language != i18n.IT || s.Channels != ChannelsNone {
 		t.Fatalf("defaults: %+v", s)
 	}
 }

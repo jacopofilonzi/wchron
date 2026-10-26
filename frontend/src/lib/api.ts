@@ -6,7 +6,7 @@ import { Service, type Snapshot, type Theme } from "../../bindings/github.com/ja
 import type { Lang } from "../../bindings/github.com/jacopofilonzi/wchron/internal/i18n";
 
 export type { Snapshot, Theme, Lang };
-export { Theme as Themes, WAState } from "../../bindings/github.com/jacopofilonzi/wchron/internal/app";
+export { Theme as Themes, ChannelsState } from "../../bindings/github.com/jacopofilonzi/wchron/internal/app";
 export { Lang as Langs } from "../../bindings/github.com/jacopofilonzi/wchron/internal/i18n";
 
 /** A user-visible error: `code` from ERRORS.md, `params` for the text placeholders. */

@@ -3,4 +3,4 @@
   import { t } from "../lib/i18n.svelte";
 </script>
 
-<EmptyPage title={t("ui.whatsapp.title")} text={t("ui.whatsapp.empty")} />
+<EmptyPage title={t("ui.channels.title")} text={t("ui.channels.empty")} />

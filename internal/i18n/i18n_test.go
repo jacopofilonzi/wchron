@@ -57,7 +57,7 @@ func TestEveryErrorCodeHasAText(t *testing.T) {
 }
 
 func TestT(t *testing.T) {
-	if got := T(EN, "tray.status.whatsapp", map[string]string{"state": "x"}); got != "WhatsApp: x" {
+	if got := T(EN, "tray.status.channels", map[string]string{"state": "x"}); got != "Channels: x" {
 		t.Fatalf("got %q", got)
 	}
 	if got := T(IT, "tray.quit", nil); got != "Esci" {
@@ -69,7 +69,7 @@ func TestT(t *testing.T) {
 	if got := T(EN, "no.such.key", nil); got != "no.such.key" {
 		t.Fatalf("got %q", got)
 	}
-	if got := T(EN, "tray.status.whatsapp", map[string]string{"other": "x"}); got != "WhatsApp: {state}" {
+	if got := T(EN, "tray.status.channels", map[string]string{"other": "x"}); got != "Channels: {state}" {
 		t.Fatalf("a missing param must stay visible, got %q", got)
 	}
 }
