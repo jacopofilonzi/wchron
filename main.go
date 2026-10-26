@@ -5,7 +5,8 @@
 // exits a second instance right away (after notifying the first one), so
 // nothing with side effects may run before it. Then: dev env overrides →
 // data dir paths → log file → config.json and state.json (startup.Open:
-// load, backup, migrate, save) → Store → service, window, tray → Run. A
+// load, backup, migrate, save) → Store → service, window, tray → Run; the
+// scheduler starts when the application has started and stops first on quit. A
 // fatal error shows a native error dialog in the user's language and exits
 // with code 1 without touching the data.
 package main
@@ -26,6 +27,7 @@ import (
 	"github.com/jacopofilonzi/wchron/internal/i18n"
 	"github.com/jacopofilonzi/wchron/internal/logging"
 	"github.com/jacopofilonzi/wchron/internal/platform"
+	"github.com/jacopofilonzi/wchron/internal/scheduler"
 	"github.com/jacopofilonzi/wchron/internal/startup"
 	"github.com/jacopofilonzi/wchron/internal/state"
 	"github.com/jacopofilonzi/wchron/internal/tray"
@@ -47,6 +49,7 @@ func main() {
 	var (
 		window  *application.WebviewWindow
 		store   *app.Store
+		sched   *scheduler.Scheduler
 		logFile io.Closer
 	)
 	showWindow := func() {
@@ -76,6 +79,9 @@ func main() {
 			},
 		},
 		OnShutdown: func() {
+			if sched != nil && !sched.Stop(5*time.Second) {
+				log.Warn("quit with runs still in progress")
+			}
 			if store != nil {
 				if err := store.Shutdown(); err != nil {
 					log.Error("shutdown", "err", err)
@@ -175,6 +181,26 @@ func main() {
 
 	store.Subscribe(func(s app.Snapshot) { wails.Event.Emit(app.EventState, s) })
 	tray.New(wails, store, log, showWindow)
+
+	// No pipeline yet (milestone 6): runs are only logged (DryRunner).
+	sched = scheduler.New(scheduler.Options{
+		Clock:    clock.Real{},
+		Location: time.Local,
+		Runner:   scheduler.DryRunner{Clock: clock.Real{}, Log: log},
+		Store:    store,
+		Log:      log,
+		OnNext: func(n *scheduler.NextRun) {
+			if n == nil {
+				store.SetNextRun(nil)
+				return
+			}
+			store.SetNextRun(&app.NextRun{ScheduleID: n.ScheduleID, ScheduleName: n.ScheduleName, At: n.At})
+		},
+	})
+	wails.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
+		sched.Reload(store.Schedules())
+		sched.Start()
+	})
 
 	if err := wails.Run(); err != nil {
 		log.Error("run", "err", err)

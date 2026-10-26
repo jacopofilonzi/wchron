@@ -1,8 +1,9 @@
 // Package tray is the system tray icon and menu.
 //
 // Menu: checkbox "Activate routine" (global pause/resume), checkbox "Keep
-// awake", a disabled status line (channels state; the last send comes with the
-// pipeline), "Open window", "Quit". Labels come from the catalog (`tray.*`) and
+// awake", two disabled status lines (channels state; the next run: "Next:
+// <schedule> 14:00", with the day name when it's not today, or "routine
+// paused" / "no scheduled send"), "Open window", "Quit". Labels come from the catalog (`tray.*`) and
 // are relabelled in place when the language changes.
 //
 // Left click opens and focuses the window, right click opens the menu.
@@ -27,21 +28,23 @@ package tray
 import (
 	"log/slog"
 	"sync"
+	"time"
 
 	"github.com/jacopofilonzi/wchron/internal/app"
 	"github.com/jacopofilonzi/wchron/internal/i18n"
+	"github.com/jacopofilonzi/wchron/internal/tokens"
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // Tray owns the system tray and its menu items.
 type Tray struct {
-	wails                                  *application.App
-	store                                  *app.Store
-	log                                    *slog.Logger
-	show                                   func()
-	tray                                   *application.SystemTray
-	mu                                     sync.Mutex // apply runs from store listeners and from fail
-	routine, keepAwake, status, open, quit *application.MenuItem
+	wails                                        *application.App
+	store                                        *app.Store
+	log                                          *slog.Logger
+	show                                         func()
+	tray                                         *application.SystemTray
+	mu                                           sync.Mutex // apply runs from store listeners and from fail
+	routine, keepAwake, status, next, open, quit *application.MenuItem
 }
 
 // New builds the tray from the current state and keeps it in sync with the
@@ -63,6 +66,7 @@ func New(wails *application.App, store *app.Store, log *slog.Logger, showWindow 
 	})
 	menu.AddSeparator()
 	t.status = menu.Add("").SetEnabled(false)
+	t.next = menu.Add("").SetEnabled(false)
 	t.open = menu.Add("").OnClick(func(*application.Context) { showWindow() })
 	menu.AddSeparator()
 	t.quit = menu.Add("").OnClick(func(*application.Context) { wails.Quit() })
@@ -94,6 +98,7 @@ func (t *Tray) apply(s app.Snapshot) {
 	t.keepAwake.SetLabel(i18n.T(l, "tray.keepawake", nil)).SetChecked(s.KeepAwake)
 	ch := i18n.T(l, "tray.channels."+string(s.Channels), nil)
 	t.status.SetLabel(i18n.T(l, "tray.status.channels", map[string]string{"state": ch}))
+	t.next.SetLabel(nextLine(s, time.Now()))
 	t.open.SetLabel(i18n.T(l, "tray.open", nil))
 	t.quit.SetLabel(i18n.T(l, "tray.quit", nil))
 
@@ -112,4 +117,27 @@ var stateKey = map[State]string{
 	StateSending:      "tray.state.sending",
 	StateError:        "tray.state.error",
 	StateDisconnected: "tray.state.disconnected",
+}
+
+// nextLine is the tray's next-run line. now only decides whether the day
+// name is needed; a stale "now" (no state change since midnight) at worst
+// shows the day name of today.
+func nextLine(s app.Snapshot, now time.Time) string {
+	l := s.Language
+	switch {
+	case !s.RoutineActive:
+		return i18n.T(l, "tray.status.paused", nil)
+	case s.NextRun == nil:
+		return i18n.T(l, "tray.status.next_none", nil)
+	}
+	at := s.NextRun.At.In(now.Location())
+	tpl := "{date:ddd HH:mm}"
+	if y, m, d := at.Date(); y == now.Year() && m == now.Month() && d == now.Day() {
+		tpl = "{date:HH:mm}"
+	}
+	when, err := tokens.Render(tpl, at, l)
+	if err != nil { // a constant template: only a bug gets here
+		when = at.Format("15:04")
+	}
+	return i18n.T(l, "tray.status.next", map[string]string{"schedule": s.NextRun.ScheduleName, "time": when})
 }

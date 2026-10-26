@@ -3,11 +3,11 @@
 // whose `code` the UI maps to `error.<code>` in the catalog.
 import { Events } from "@wailsio/runtime";
 import { Service, type Snapshot } from "../../bindings/github.com/jacopofilonzi/wchron/internal/app";
-import type { Theme } from "../../bindings/github.com/jacopofilonzi/wchron/internal/config";
+import type { Cadence, Theme } from "../../bindings/github.com/jacopofilonzi/wchron/internal/config";
 import type { Lang } from "../../bindings/github.com/jacopofilonzi/wchron/internal/i18n";
 import type { Entry as LogEntry } from "../../bindings/github.com/jacopofilonzi/wchron/internal/logging";
 
-export type { Snapshot, Theme, Lang, LogEntry };
+export type { Snapshot, Theme, Lang, LogEntry, Cadence };
 export { ChannelsState } from "../../bindings/github.com/jacopofilonzi/wchron/internal/app";
 export { Theme as Themes } from "../../bindings/github.com/jacopofilonzi/wchron/internal/config";
 export { Lang as Langs } from "../../bindings/github.com/jacopofilonzi/wchron/internal/i18n";
@@ -53,6 +53,9 @@ export const api = {
     ),
   /** A token template rendered for now in the current language; a `token.*` error carries `pos` (1-based character). */
   previewTokens: (template: string) => call(() => Service.PreviewTokens(template)),
+  /** The next n run times of a cadence from now (RFC 3339, local offset); a `cadence.*` or `schedule.no_days` error if invalid. */
+  previewRuns: (cadence: Cadence, n: number) =>
+    call(async (): Promise<string[]> => (await Service.PreviewRuns(cadence, n)) ?? []),
 };
 
 /** Subscribes to every state change pushed by Go (tray or window); returns the unsubscribe function. */

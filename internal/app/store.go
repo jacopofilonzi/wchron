@@ -18,6 +18,12 @@
 // The live keep-awake switch is not persisted (it starts from
 // keep_awake_default at every launch, see Start), and autostart is read from
 // and written to the OS only.
+//
+// The Store is also the scheduler's view of the app (scheduler.Store): the
+// routine flag, each schedule's last slot/result in state.json (a failed save
+// is only logged, like the pause), and NextRun, the earliest upcoming run the
+// scheduler reports, which is part of the Snapshot (tray status line,
+// EventState).
 package app
 
 import (
@@ -25,6 +31,7 @@ import (
 	"log/slog"
 	"slices"
 	"sync"
+	"time"
 
 	"github.com/jacopofilonzi/wchron/internal/apperr"
 	"github.com/jacopofilonzi/wchron/internal/config"
@@ -57,6 +64,16 @@ type Snapshot struct {
 	Language         i18n.Lang     `json:"language"`
 	Channels         ChannelsState `json:"channels"`
 	Version          string        `json:"version"`
+	// NextRun is the earliest upcoming scheduled run; null when no enabled
+	// schedule has one. It is shown even while the routine is paused.
+	NextRun *NextRun `json:"next_run"`
+}
+
+// NextRun is a schedule's next slot (without jitter), in local time.
+type NextRun struct {
+	ScheduleID   string    `json:"schedule_id"`
+	ScheduleName string    `json:"schedule_name"`
+	At           time.Time `json:"at"`
 }
 
 // Deps are the Store's inputs.
@@ -281,6 +298,59 @@ func (st *Store) SetLanguage(l i18n.Lang) (Snapshot, error) {
 		s.Language = l
 		return true, nil
 	})
+}
+
+// Schedules returns the configured schedules (for the scheduler's Reload).
+func (st *Store) Schedules() []config.Schedule {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return slices.Clone(st.cfg.Schedules)
+}
+
+// RoutineActive is false while the routine is paused.
+func (st *Store) RoutineActive() bool { return st.Snapshot().RoutineActive }
+
+// ScheduleState returns a schedule's last-run state (zero if it never ran).
+func (st *Store) ScheduleState(id string) state.ScheduleState {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	return st.st.Schedules[id]
+}
+
+// UpdateScheduleState changes a schedule's last-run state and saves
+// state.json; a failed save is only logged (state.write_failed), the change
+// stays in memory.
+func (st *Store) UpdateScheduleState(id string, change func(*state.ScheduleState)) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.st.Schedules == nil {
+		st.st.Schedules = map[string]state.ScheduleState{}
+	}
+	s := st.st.Schedules[id]
+	change(&s)
+	st.st.Schedules[id] = s
+	if err := st.d.SaveState(st.st); err != nil {
+		st.d.Log.Warn("save schedule state", "schedule", id, "err", err)
+	}
+}
+
+// SetNextRun records the next scheduled run (nil for none) and notifies the
+// listeners when it changed.
+func (st *Store) SetNextRun(n *NextRun) {
+	_, _ = st.update(func(s *Snapshot) (bool, error) {
+		if sameNextRun(s.NextRun, n) {
+			return false, nil
+		}
+		s.NextRun = n
+		return true, nil
+	})
+}
+
+func sameNextRun(a, b *NextRun) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return a.ScheduleID == b.ScheduleID && a.ScheduleName == b.ScheduleName && a.At.Equal(b.At)
 }
 
 // Shutdown releases keep-awake. Windows drops it anyway when the process

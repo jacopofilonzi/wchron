@@ -4,6 +4,7 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/jacopofilonzi/wchron/internal/apperr"
 	"github.com/jacopofilonzi/wchron/internal/config"
@@ -188,5 +189,32 @@ func TestConfigSaveFailureRollsBack(t *testing.T) {
 	// state.json failures only warn: the pause still applies.
 	if s, err := st.SetRoutineActive(false); err != nil || s.RoutineActive {
 		t.Fatalf("s=%+v err=%v", s, err)
+	}
+}
+
+func TestScheduleStateAndNextRun(t *testing.T) {
+	var saved []state.State
+	st := NewStore(Deps{Inhibitor: &fakeInhibitor{}, Autostart: &fakeAutostart{}, Config: config.Default(), State: state.Default(),
+		SaveState: func(s state.State) error { saved = append(saved, s); return nil }})
+	slot := time.Date(2026, 10, 26, 14, 0, 0, 0, time.UTC)
+	st.UpdateScheduleState("a", func(s *state.ScheduleState) { s.LastSlot = slot })
+	st.UpdateScheduleState("a", func(s *state.ScheduleState) { s.LastResult = state.ResultDryRun })
+	got := st.ScheduleState("a")
+	if !got.LastSlot.Equal(slot) || got.LastResult != state.ResultDryRun || len(saved) != 2 ||
+		saved[1].Schedules["a"].LastResult != state.ResultDryRun {
+		t.Fatalf("state %+v, saved %d", got, len(saved))
+	}
+
+	var snaps []Snapshot
+	st.Subscribe(func(s Snapshot) { snaps = append(snaps, s) })
+	n := &NextRun{ScheduleID: "a", ScheduleName: "Report", At: slot}
+	st.SetNextRun(n)
+	st.SetNextRun(&NextRun{ScheduleID: "a", ScheduleName: "Report", At: slot.In(time.Local)}) // same instant
+	st.SetNextRun(nil)
+	if len(snaps) != 2 || snaps[0].NextRun == nil || snaps[0].NextRun.ScheduleName != "Report" || snaps[1].NextRun != nil {
+		t.Fatalf("snapshots %+v", snaps)
+	}
+	if !st.RoutineActive() {
+		t.Fatal("routine active by default")
 	}
 }
