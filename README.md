@@ -103,8 +103,9 @@ removed, the window asks you to scan the QR again.
 
 ## Tray
 
-- **Activate routine**: pause or resume all schedules.
-- **Keep awake**: keeps the PC from sleeping while wchron runs (the screen can still turn off).
+- **Activate routine**: pause or resume all schedules (a pause is remembered across restarts).
+- **Keep awake**: keeps the PC from sleeping while wchron runs (the screen can still turn off). It
+  starts off at every launch, unless "Keep the PC awake at startup" is on in Settings.
 - Open the window, see the connection state and last send, quit.
 
 The icon shows whether the routine is active, paused, sending, in error or with a channel disconnected,
@@ -117,7 +118,8 @@ be needed). It only notifies you: nothing is installed until you click **Update*
 installer, waits until no send is in progress and the next one is at least 10 minutes away, closes,
 updates and restarts by itself.
 
-Before starting a new version, wchron backs up your data (`%APPDATA%\wchron\backups\`); if the backup
+Before starting a new version, wchron backs up your data (`%APPDATA%\wchron\backups\`, one folder per
+upgrade named after the date and the previous version; the 10 most recent are kept); if the backup
 fails, it doesn't start. Your schedules, settings and channels (including the WhatsApp link) are kept across updates.
 
 ### Upgrade notes
@@ -126,8 +128,14 @@ None yet. Anything you need to do before installing a specific version will be l
 
 ## Your data
 
-Everything is in `%APPDATA%\wchron`: `config.json` (schedules, channels, settings), `state.json` (last runs),
-`channels\` (the WhatsApp link and other channel credentials: keep it private), `logs\` and `backups\`.
+Everything is in `%APPDATA%\wchron`: `config.json` (schedules, channels, settings), `state.json` (last runs,
+whether the routine is paused), `channels\` (the WhatsApp link and other channel credentials: keep it
+private), `logs\` and `backups\`.
+
+If wchron can't read `config.json` (for example after a hand edit), or the file was saved by a newer
+version, it shows an error and doesn't start, leaving the file as it is: fix it, restore it from
+`backups\` or install the newer version. If `state.json` is damaged, wchron starts anyway with the
+last-run information reset, and keeps the damaged file next to it as `state.json.corrupt-<date>`.
 
 ## Development
 

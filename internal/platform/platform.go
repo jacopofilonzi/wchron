@@ -3,8 +3,9 @@
 // in `_windows.go` files and `_other.go` holds stubs so every package still
 // compiles (and `go vet` runs) on Linux and macOS.
 //
-// Planned surface: SleepInhibitor, Autostart (implemented), Notifier (desktop
-// toast), Paths (config, data, log, temp). Single instance is
+// Surface: SleepInhibitor, Autostart, Paths (data dir layout, paths.go) and
+// FatalDialog (the startup error box, MessageBoxW) are implemented; Notifier
+// (desktop toast) and Protect/Unprotect (DPAPI) come later. Single instance is
 // handled by Wails (application.Options.SingleInstance), not here.
 //
 // Keep awake on Windows: SetThreadExecutionState(ES_CONTINUOUS |

@@ -139,11 +139,16 @@ i18n lives in one shared catalog used by both Go and the frontend.
   `internal/state/migrations.go`), never edits to one already released (pushed to `main`); each bumps
   `schema_version`. A migration that touches existing data gets a test that starts from a file at the
   previous version with realistic data. Before migrating, or when the app version changed since the last
-  run, the app copies the data files to `backups/<timestamp>-v<old version>/` (SQLite files such as
-  `session.db` via `VACUUM INTO`) and refuses to start (`storage.backup_failed`) if the backup fails. A file with a
+  run, the app copies the data files to `backups/<timestamp>-v<old version>/` (`internal/backup`, from
+  `internal/startup`) and refuses to start (`storage.backup_failed`) if the backup fails. The backup runs
+  at startup before any channel or database is opened, so it is a plain file copy (SQLite `session.db`
+  together with its `-wal`/`-shm` files); never move it after the channels are opened. The 10 most recent
+  backups are kept (app-generated copies, not user data). A file with a
   `schema_version` newer than the app is never overwritten (`config.newer_version`). Anything the user must
   do before updating goes in the README upgrade notes.
-- Writes to `config.json` and `state.json` are atomic (temp file + rename).
+- Writes to `config.json` and `state.json` are atomic (`fsutil.WriteAtomic`: temp file in the same dir +
+  fsync + rename). An unreadable `config.json` is never overwritten (the app doesn't start); an unreadable
+  `state.json` is moved aside as `state.json.corrupt-<timestamp>`, never deleted.
 - Every error the user can see has a code listed in `ERRORS.md` and a text in both languages; a test fails
   if the code registry, the catalogs and `ERRORS.md` disagree.
 
@@ -172,6 +177,7 @@ i18n lives in one shared catalog used by both Go and the frontend.
   - `modernc.org/sqlite` (no CGO): the driver name is `sqlite`, not `sqlite3`.
   - excelize v2: reads cached formula values, never recalculates.
   - Svelte 5, Vite, Tailwind 4 (`@tailwindcss/vite`, CSS-first config, no `tailwind.config.js`).
+  - `gopkg.in/natefinch/lumberjack.v2` (log rotation, used only in `internal/logging`).
 - Deleting is permanent, never a trash (agreed for this project): schedules, recipients, file specs and
   channels are deleted only after a confirmation dialog that names the item ("Are you sure you want to
   delete …?") and states the consequences (e.g. which schedules lose a recipient when a channel goes).
@@ -196,7 +202,8 @@ i18n lives in one shared catalog used by both Go and the frontend.
 - One catalog for Go and the frontend: `locales/it.json` and `locales/en.json`, embedded in Go
   (`locales/embed.go`) and imported by the frontend. Keys are namespaced: `ui.*` (frontend only),
   `tray.*`, `notify.*` (texts of the reports sent to the error recipients), `provider.<type>.*` (provider
-  labels, setup and target fields), `error.<code>`.
+  labels, setup and target fields), `dialog.*` (native dialogs from Go, e.g. the startup error box),
+  `error.<code>`.
 - Placeholders are `{name}`, filled from the error `params` or the caller.
 - `en.json` is the reference set of keys: the frontend types `it` as `typeof en`, a Go test checks that both
   files have the same keys and that every code in `internal/apperr` has an `error.<code>` key.
@@ -290,7 +297,12 @@ i18n lives in one shared catalog used by both Go and the frontend.
   `all:frontend/dist`, which must hold a file for `go vet`/`go test` to compile: the Makefile writes a
   `.keep` there when it's empty.
 - Wails single instance: `application.New` exits a second launch right away (after notifying the first),
-  so nothing with side effects may run before it in `main.go`.
+  so nothing with side effects may run before it in `main.go`. That is why the data dir, the log file and
+  `startup.Open` run after it, the service is added with `wails.RegisterService` (the bindings generator
+  finds any `application.NewService` call) and the file logger replaces the stderr one via `wails.Logger`.
+- Migration steps see the raw JSON with numbers as `json.Number` (`internal/migrate` decodes with
+  `UseNumber`, so large ids stay exact), not `float64`.
+- Release builds use the `production` tag (`version.Dev` false): no stderr logging, `-H windowsgui`.
 - npm 12 refuses `npm install --package-lock-only` here (optional tarballs): `set-version.mjs` edits the
   lock's own version entries directly.
 - `wails3 generate icons` always writes macOS files too: `build/windows/icon.ico` is a committed asset,
