@@ -63,3 +63,27 @@ func (r regRunKey) del(name string) error {
 	}
 	return nil
 }
+
+const (
+	mbOK            = 0x00000000
+	mbIconError     = 0x00000010
+	mbSetForeground = 0x00010000
+	mbTopmost       = 0x00040000
+)
+
+// FatalDialog shows a blocking error message box (MessageBoxW). It is used
+// only when the app can't start, before the message loop runs.
+func FatalDialog(title, message string) error {
+	t, err := windows.UTF16PtrFromString(title)
+	if err != nil {
+		return fmt.Errorf("dialog title: %w", err)
+	}
+	m, err := windows.UTF16PtrFromString(message)
+	if err != nil {
+		return fmt.Errorf("dialog message: %w", err)
+	}
+	if _, err := windows.MessageBox(0, m, t, mbOK|mbIconError|mbSetForeground|mbTopmost); err != nil {
+		return fmt.Errorf("MessageBoxW: %w", err)
+	}
+	return nil
+}

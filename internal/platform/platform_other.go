@@ -22,3 +22,7 @@ type unsupportedInhibitor struct{}
 
 func (unsupportedInhibitor) Enable() error  { return errUnsupported }
 func (unsupportedInhibitor) Disable() error { return nil }
+
+// FatalDialog is a stub until a Linux/macOS implementation exists: the error
+// is only logged.
+func FatalDialog(string, string) error { return errUnsupported }
