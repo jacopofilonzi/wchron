@@ -62,6 +62,22 @@ const (
 	SendUploadFailed          Code = "send.upload_failed"
 	SendFailed                Code = "send.failed"
 	SendRecipientInvalid      Code = "send.recipient_invalid"
+	ScheduleNotFound          Code = "schedule.not_found"
+	ScheduleBusy              Code = "schedule.busy"
+	RecipientChannelMissing   Code = "recipient.channel_missing"
+	FilespecPathRequired      Code = "filespec.path_required"
+	FilespecPathNotAbsolute   Code = "filespec.path_not_absolute"
+	FilespecGlobInDir         Code = "filespec.glob_in_dir"
+	ProcessorUnknown          Code = "processor.unknown"
+	ProcessorOptionsInvalid   Code = "processor.options_invalid"
+	FileNotFound              Code = "file.not_found"
+	FileMultipleMatches       Code = "file.multiple_matches"
+	FileLocked                Code = "file.locked"
+	FileUnreadable            Code = "file.unreadable"
+	TempUnavailable           Code = "temp.unavailable"
+	SendCaptionTooLong        Code = "send.caption_too_long"
+	SendFilesUnsupported      Code = "send.files_unsupported"
+	NotifyFailed              Code = "notify.failed"
 	Internal                  Code = "internal"
 )
 
@@ -125,5 +141,21 @@ var All = []Code{
 	SendUploadFailed,
 	SendFailed,
 	SendRecipientInvalid,
+	ScheduleNotFound,
+	ScheduleBusy,
+	RecipientChannelMissing,
+	FilespecPathRequired,
+	FilespecPathNotAbsolute,
+	FilespecGlobInDir,
+	ProcessorUnknown,
+	ProcessorOptionsInvalid,
+	FileNotFound,
+	FileMultipleMatches,
+	FileLocked,
+	FileUnreadable,
+	TempUnavailable,
+	SendCaptionTooLong,
+	SendFilesUnsupported,
+	NotifyFailed,
 	Internal,
 }
