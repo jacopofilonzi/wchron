@@ -32,13 +32,14 @@ endif
 # Packages without Wails, vetted for Linux too (the platform stubs must compile).
 CROSS_PKGS = ./locales/... ./internal/apperr/... ./internal/i18n/... ./internal/platform/... ./internal/logging/... \
   ./internal/version/... ./internal/devenv/... ./internal/fsutil/... ./internal/migrate/... ./internal/config/... \
-  ./internal/state/... ./internal/backup/... ./internal/startup/... ./internal/clock/... ./internal/tokens/... ./internal/scheduler/... ./internal/logo/... \n  ./internal/provider/...
+  ./internal/state/... ./internal/backup/... ./internal/startup/... ./internal/clock/... ./internal/tokens/... ./internal/scheduler/... ./internal/logo/... \
+  ./internal/provider/...
 
 # go:embed needs frontend/dist to hold a file before the frontend is built.
 DIST_GUARD = node -e "const fs=require('fs');fs.mkdirSync('frontend/dist',{recursive:true});if(!fs.readdirSync('frontend/dist').length)fs.writeFileSync('frontend/dist/.keep','')"
 
 .DEFAULT_GOAL := help
-.PHONY: help deps dev build package run bindings icons test vet vet-cross check version clean
+.PHONY: help deps dev build package run bindings icons test vet vet-cross check smoke version clean
 
 help: ## Show this list
 	@node -e "for (const l of require('fs').readFileSync('Makefile','utf8').split(/\r?\n/)) { const m = /^([a-z-]+):.*## (.*)$$/.exec(l); if (m) console.log('  ' + m[1].padEnd(10) + ' ' + m[2]); }"
@@ -81,6 +82,9 @@ vet-cross:
 check: bindings vet test ## Everything that must pass: vet, tests, svelte-check, frontend build
 	cd frontend && npm run check
 	cd frontend && npm run build
+
+smoke: ## Opt-in live check, read-only: connect the paired dev WhatsApp channels (WCHRON_DATA_DIR), print status and group count
+	go run ./internal/provider/whatsapp/smoke
 
 version: ## Set the version everywhere: make version V=x.y.z
 	node scripts/set-version.mjs $(V)
