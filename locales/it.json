@@ -57,6 +57,12 @@
   "error.state.write_failed": "Impossibile salvare le informazioni sugli ultimi invii in {path}.",
   "error.devenv.invalid": "Impostazione di sviluppo non valida {name}={value}: correggila nel file .env o nell'ambiente.",
   "error.logs.read_failed": "Impossibile leggere i file di log.",
+  "error.token.unclosed": "La { al carattere {pos} non viene mai chiusa: aggiungi la } corrispondente, oppure scrivi {{ per una parentesi graffa normale.",
+  "error.token.unexpected_close": "La } al carattere {pos} non ha una { corrispondente: scrivi }} per una parentesi graffa normale.",
+  "error.token.unknown": "Segnaposto \"{name}\" sconosciuto al carattere {pos}: l'unico disponibile è date, come in {date:DD-MM-YYYY}.",
+  "error.token.format_invalid": "Formato di data \"{format}\" non valido al carattere {pos}: usa le lettere YYYY, YY, MMMM, MMM, MM, M, DD, D, dddd, ddd, HH, H, mm, ss.",
+  "error.token.offset_invalid": "\"{offset}\" al carattere {pos} non è uno spostamento di data valido: usa spostamenti come -1d, +2w, -1m, +1y o ancoraggi come @month-start, @week-end.",
+  "error.token.empty": "Segnaposto vuoto al carattere {pos}: scrivine uno come {date:DD-MM-YYYY}, oppure {{}} per le parentesi graffe normali.",
   "error.autostart.failed": "Impossibile modificare l'avvio con Windows: Windows non ha consentito la scrittura.",
   "error.keepawake.failed": "Windows non ha consentito di mantenere attivo il PC.",
   "error.internal": "Errore imprevisto. I dettagli sono nel log."

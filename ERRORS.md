@@ -66,16 +66,18 @@ Rules:
 
 ## Tokens (paths, captions, sheet names)
 
-Shown inline under the field, with the live preview; `pos` is the character position in the template.
+Shown inline under the field, with the live preview (syntax in README.md "Files and dates in names").
+`pos` is the 1-based character position in the template (characters, not bytes: `è` counts as one);
+only the first error is reported.
 
 | Code | Level | Where | Params | Meaning / what to do |
 | --- | --- | --- | --- | --- |
-| `token.unclosed` | error | GUI | `pos` | A `{` has no matching `}`. Use `{{` for a literal brace. |
-| `token.unexpected_close` | error | GUI | `pos` | A `}` without `{`. Use `}}` for a literal brace. |
-| `token.unknown` | error | GUI | `pos`, `name` | Unknown token name. |
-| `token.format_invalid` | error | GUI | `pos`, `format` | Unknown format letters in the token. |
-| `token.offset_invalid` | error | GUI | `pos`, `offset` | Offset not understood (e.g. `-1d`, `+2w`, `@month-start`). |
-| `token.empty` | error | GUI | `pos` | `{}` with nothing inside. |
+| `token.unclosed` | error | GUI | `pos` | The `{` at `pos` has no matching `}` (the template ends, or another `{` comes first). Use `{{` for a literal brace. |
+| `token.unexpected_close` | error | GUI | `pos` | A `}` outside a token. Use `}}` for a literal brace. |
+| `token.unknown` | error | GUI | `pos`, `name` | Unknown token name (`pos`: its first character). Today the only one is `date` (lowercase). |
+| `token.format_invalid` | error | GUI | `pos`, `format` | The format after `:` has a letter that is not a format code, or is empty (`pos`: the first bad letter; `format`: the whole format). |
+| `token.offset_invalid` | error | GUI | `pos`, `offset` | A modifier is not understood (`offset`: the modifier as written, `pos`: its `+`, `-` or `@`). Offsets are `+N`/`-N` with 1–4 digits and a unit `d` `w` `m` `y`; anchors are `@month-start`, `@month-end`, `@week-start`, `@week-end`, `@year-start`, `@year-end`. |
+| `token.empty` | error | GUI | `pos` | `{}` (or only spaces) with nothing inside. |
 
 ## Run time (scheduled runs and "send now")
 

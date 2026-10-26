@@ -57,6 +57,12 @@
   "error.state.write_failed": "The last-run information couldn't be saved to {path}.",
   "error.devenv.invalid": "Invalid development setting {name}={value}: fix it in .env or in the environment.",
   "error.logs.read_failed": "The log files can't be read.",
+  "error.token.unclosed": "The { at character {pos} is never closed: add the matching }, or write {{ for a literal brace.",
+  "error.token.unexpected_close": "The } at character {pos} has no matching {: write }} for a literal brace.",
+  "error.token.unknown": "Unknown token \"{name}\" at character {pos}: the only token is date, as in {date:DD-MM-YYYY}.",
+  "error.token.format_invalid": "Invalid date format \"{format}\" at character {pos}: use the letters YYYY, YY, MMMM, MMM, MM, M, DD, D, dddd, ddd, HH, H, mm, ss.",
+  "error.token.offset_invalid": "\"{offset}\" at character {pos} is not a valid date change: use offsets like -1d, +2w, -1m, +1y or anchors like @month-start, @week-end.",
+  "error.token.empty": "Empty token at character {pos}: write one like {date:DD-MM-YYYY}, or {{}} for literal braces.",
   "error.autostart.failed": "Couldn't change the start with Windows setting: Windows refused to write it.",
   "error.keepawake.failed": "Windows refused to keep the PC awake.",
   "error.internal": "Unexpected error. The details are in the log."

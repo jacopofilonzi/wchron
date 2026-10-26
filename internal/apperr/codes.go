@@ -17,6 +17,12 @@ const (
 	AutostartFailed       Code = "autostart.failed"
 	KeepAwakeFailed       Code = "keepawake.failed"
 	LogsReadFailed        Code = "logs.read_failed"
+	TokenUnclosed         Code = "token.unclosed"
+	TokenUnexpectedClose  Code = "token.unexpected_close"
+	TokenUnknown          Code = "token.unknown"
+	TokenFormatInvalid    Code = "token.format_invalid"
+	TokenOffsetInvalid    Code = "token.offset_invalid"
+	TokenEmpty            Code = "token.empty"
 	Internal              Code = "internal"
 )
 
@@ -35,5 +41,11 @@ var All = []Code{
 	AutostartFailed,
 	KeepAwakeFailed,
 	LogsReadFailed,
+	TokenUnclosed,
+	TokenUnexpectedClose,
+	TokenUnknown,
+	TokenFormatInvalid,
+	TokenOffsetInvalid,
+	TokenEmpty,
 	Internal,
 }
