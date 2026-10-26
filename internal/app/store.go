@@ -40,6 +40,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"maps"
 	"slices"
 	"sync"
 	"time"
@@ -447,6 +448,24 @@ func (st *Store) UpdateScheduleState(id string, change func(*state.ScheduleState
 	if err := st.d.SaveState(st.st); err != nil {
 		st.d.Log.Warn("save schedule state", "schedule", id, "err", err)
 	}
+}
+
+// DeleteScheduleState forgets a deleted schedule's last-run state and saves
+// state.json (a failed save is only logged).
+func (st *Store) DeleteScheduleState(id string) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if _, ok := st.st.Schedules[id]; !ok {
+		return
+	}
+	next := st.st
+	next.Schedules = maps.Clone(st.st.Schedules)
+	delete(next.Schedules, id)
+	if err := st.d.SaveState(next); err != nil {
+		st.d.Log.Warn("save state after delete", "schedule", id, "err", err)
+	}
+	st.st = next
+	delete(st.failing, id)
 }
 
 // SetNextRun records the next scheduled run (nil for none) and notifies the

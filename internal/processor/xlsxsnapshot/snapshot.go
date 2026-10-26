@@ -107,6 +107,11 @@ func (Processor) Type() string { return Type }
 
 func (Processor) Extensions() []string { return slices.Clone(extensions) }
 
+// OutputName is the original's name with the extension ".xlsx".
+func (Processor) OutputName(name string) string {
+	return strings.TrimSuffix(name, filepath.Ext(name)) + ".xlsx"
+}
+
 func (Processor) OptionsSchema() []processor.Field {
 	return []processor.Field{{Key: "sheets", Kind: processor.FieldList, Tokens: true}}
 }
@@ -256,7 +261,7 @@ func (Processor) Process(ctx context.Context, src processor.Source, raw json.Raw
 		return processor.Output{}, nil, processFailed(src.Name, err)
 	}
 
-	outName := strings.TrimSuffix(src.Name, filepath.Ext(src.Name)) + ".xlsx"
+	outName := Processor{}.OutputName(src.Name)
 	outPath := filepath.Join(env.TmpDir, outName)
 	f.Path = outPath // WriteTo picks the .xlsx content type from it
 	var buf bytes.Buffer

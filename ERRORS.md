@@ -52,7 +52,7 @@ Rules:
 | `cadence.time_invalid` | error | GUI | `value` | A fixed time is not a valid `HH:MM`. |
 | `cadence.time_duplicate` | error | GUI | `value` | The same fixed time appears twice. |
 | `recipient.required` | error | GUI | — | No recipient chosen: a schedule needs at least one. |
-| `recipient.duplicate` | error | GUI | `recipient` | The same recipient on the same channel appears twice. |
+| `recipient.duplicate` | error | GUI | `recipient` | The same recipient on the same channel appears twice (in a schedule or in the error recipients). |
 | `recipient.channel_missing` | error | GUI, Toast, Err, Status | `schedule`, `recipient` | The recipient's channel no longer exists (e.g. `config.json` edited by hand). At run time that recipient is skipped; for an error recipient the report to it is `notify.failed`. |
 | `recipient.check_unavailable` | warning | GUI | `channel` | The recipient can't be checked now (its channel is not connected). It is saved anyway, as not verified (`verified: "unknown"`), and checked automatically when the channel connects. |
 | `recipient.check_failed` | warning | Status | `recipient`, `channel` | An unverified recipient was checked when its channel connected and the service rejected it (e.g. the number is not on WhatsApp, the group was left). It is stored as `verified: "no"` and never sent to; fix or remove it in the schedule. |
@@ -62,6 +62,7 @@ Rules:
 | `filespec.glob_in_dir` | error | GUI | `value` | Wildcards (`*`, `?`) are allowed only in the file name, not in folders. |
 | `processor.unknown` | error | GUI | `type` | Unknown processor type (config edited by hand or from a newer version). |
 | `processor.options_invalid` | error | GUI | `field` | A processor option is missing or wrong. |
+| `processor.extension_unsupported` | error | GUI | `ext` | The chosen processing doesn't handle files with this extension (e.g. "Values only" on a `.pdf`): choose "Original". Checked on save when the pattern's extension is fixed (no wildcard, no token in it). |
 | `filespec.send_name_invalid` | error | GUI, Toast, Err, Status | `value` | The name to send (`value`: as rendered, with the extension added) is not a valid Windows file name: it has one of `< > : " /  | ? *` or a control character, ends with a dot or a space, is a reserved name (`CON`, `PRN`, `AUX`, `NUL`, `COM1`–`9`, `LPT1`–`9`, also with an extension) or is longer than 255 characters. At run time (a date token that renders a `/`, a hand edit) that file is skipped. |
 | `xlsx.not_xlsx` | error | GUI, Toast, Err, Status | `value` | "Values only" handles only `.xlsx`, `.xlsm`, `.xltx`, `.xltm` workbooks (`value`: the file name); old `.xls` and binary `.xlsb` files are not supported. At run time that file is skipped. Choose "Original" to send it as it is. |
 
@@ -169,6 +170,7 @@ schedule for a whole stretch, not one per slot.
 | `autostart.failed` | error | GUI | — | Couldn't enable/disable start at login (registry write refused). |
 | `keepawake.failed` | error | Tray, Toast | — | Windows refused to keep the PC awake. |
 | `logs.read_failed` | error | GUI | — | The log files can't be read. |
+| `folder.open_failed` | error | GUI | `path` | "Open folder" (data, logs) couldn't start Windows Explorer on `path`. |
 
 ## Updates
 

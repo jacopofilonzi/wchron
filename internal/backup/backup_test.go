@@ -150,3 +150,19 @@ func TestPrune(t *testing.T) {
 		t.Fatalf("second prune: %v %v", removed, err)
 	}
 }
+
+func TestLatest(t *testing.T) {
+	dir := t.TempDir()
+	if _, ok, err := Latest(filepath.Join(dir, "missing"), time.UTC); ok || err != nil {
+		t.Fatalf("missing dir: %v %v", ok, err)
+	}
+	for _, n := range []string{"20261020-080000-v0.6.0", "20261026-093000-v0.7.0", "20261025-120000-v0.7.0-2", "not-a-backup"} {
+		if err := os.Mkdir(filepath.Join(dir, n), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, ok, err := Latest(dir, time.UTC)
+	if err != nil || !ok || !got.Equal(time.Date(2026, 10, 26, 9, 30, 0, 0, time.UTC)) {
+		t.Fatalf("got %v %v %v", got, ok, err)
+	}
+}

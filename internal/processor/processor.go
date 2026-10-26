@@ -95,6 +95,10 @@ type Processor interface {
 	// another type is the processor's own error.
 	Extensions() []string
 	OptionsSchema() []Field
+	// OutputName is the name Process gives the output of an original named
+	// name (e.g. "report.xlsx" for "report.xlsm"), for the editor's preview of
+	// the send names without processing anything.
+	OutputName(name string) string
 	// Validate checks the options (processor.options_invalid, or the
 	// processor's own codes).
 	Validate(opts json.RawMessage) error

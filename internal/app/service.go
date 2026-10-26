@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/jacopofilonzi/wchron/internal/apperr"
@@ -12,6 +13,7 @@ import (
 	"github.com/jacopofilonzi/wchron/internal/config"
 	"github.com/jacopofilonzi/wchron/internal/i18n"
 	"github.com/jacopofilonzi/wchron/internal/logging"
+	"github.com/jacopofilonzi/wchron/internal/processor"
 	"github.com/jacopofilonzi/wchron/internal/provider"
 	"github.com/jacopofilonzi/wchron/internal/resolver"
 	"github.com/jacopofilonzi/wchron/internal/scheduler"
@@ -67,6 +69,7 @@ func init() {
 	application.RegisterEvent[provider.PairingEvent](EventChannelQR)
 	application.RegisterEvent[RunEvent](EventRunStarted)
 	application.RegisterEvent[RunEvent](EventRunFinished)
+	application.RegisterEvent[SchedulesChanged](EventSchedules)
 }
 
 // Service is the Wails service bound to the frontend. Each method returns the
@@ -79,6 +82,14 @@ type Service struct {
 	logsDir  string
 	clock    clock.Clock
 	loc      *time.Location // time.Local; tests set Europe/Rome
+	log      *slog.Logger
+	// Extras (Configure): processors for the editor's checks and previews,
+	// folders for Settings, the hook after a schedule change, the folder opener.
+	procs      *processor.Registry
+	dataDir    string
+	backupsDir string
+	changed    func(id string)
+	openFolder func(path string) error
 	// sheets reads a workbook's sheet names (xlsxsnapshot.ReadSheets, set in
 	// main.go: this package doesn't name the processors).
 	sheets func(path string) ([]string, error)
@@ -108,7 +119,8 @@ func (s *Service) ReadSheets(pathPattern string) ([]string, error) {
 // for the bindings; logsDir is where Logs reads, clk the source of "now" for
 // the previews (clock.Real in the app).
 func NewService(st *Store, reg *provider.Registry, channels *provider.Manager, runs Runs, logsDir string, clk clock.Clock) *Service {
-	return &Service{store: st, registry: reg, channels: channels, runs: runs, logsDir: logsDir, clock: clk, loc: time.Local}
+	return &Service{store: st, registry: reg, channels: channels, runs: runs, logsDir: logsDir, clock: clk, loc: time.Local,
+		log: st.d.Log, procs: processor.NewRegistry(), changed: func(string) {}}
 }
 
 // SendNow runs a schedule at once ("send now"), enabled or not, ignoring its

@@ -207,5 +207,12 @@
   "error.send.caption_too_long": "{schedule}: the caption is longer than {channel} allows ({max} characters); not sent to {recipient}.",
   "error.send.files_unsupported": "{schedule}: {channel} can't send files; nothing sent to {recipient}.",
   "error.notify.failed": "The error report could not be sent to {recipient}.",
-  "error.internal": "Unexpected error. The details are in the log."
+  "error.schedule.name_required": "Give the schedule a name.",
+  "error.schedule.no_files": "Add at least one file.",
+  "error.recipient.required": "Add at least one recipient.",
+  "error.recipient.duplicate": "{recipient} is in the list more than once.",
+  "error.processor.extension_unsupported": "This processing doesn't handle {ext} files: choose \"Original\" to send them as they are.",
+  "error.folder.open_failed": "The folder {path} couldn't be opened.",
+  "error.internal": "Unexpected error. The details are in the log.",
+  "schedule.copy_name": "{name} (copy)"
 }

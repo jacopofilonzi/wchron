@@ -207,5 +207,12 @@
   "error.send.caption_too_long": "{schedule}: la didascalia è più lunga di quanto {channel} consente ({max} caratteri); non inviato a {recipient}.",
   "error.send.files_unsupported": "{schedule}: {channel} non può inviare file; non inviato niente a {recipient}.",
   "error.notify.failed": "Non è stato possibile inviare la segnalazione degli errori a {recipient}.",
-  "error.internal": "Errore imprevisto. I dettagli sono nel log."
+  "error.schedule.name_required": "Dai un nome alla pianificazione.",
+  "error.schedule.no_files": "Aggiungi almeno un file.",
+  "error.recipient.required": "Aggiungi almeno un destinatario.",
+  "error.recipient.duplicate": "{recipient} è nell'elenco più di una volta.",
+  "error.processor.extension_unsupported": "Questa elaborazione non gestisce i file {ext}: scegli \"Originale\" per inviarli così come sono.",
+  "error.folder.open_failed": "Impossibile aprire la cartella {path}.",
+  "error.internal": "Errore imprevisto. I dettagli sono nel log.",
+  "schedule.copy_name": "{name} (copia)"
 }

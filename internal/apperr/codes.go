@@ -85,6 +85,12 @@ const (
 	XlsxNoSheetFound          Code = "xlsx.no_sheet_found"
 	XlsxNoCachedValues        Code = "xlsx.no_cached_values"
 	XlsxProcessFailed         Code = "xlsx.process_failed"
+	ScheduleNameRequired      Code = "schedule.name_required"
+	ScheduleNoFiles           Code = "schedule.no_files"
+	RecipientRequired         Code = "recipient.required"
+	RecipientDuplicate        Code = "recipient.duplicate"
+	ProcessorExtension        Code = "processor.extension_unsupported"
+	FolderOpenFailed          Code = "folder.open_failed"
 	Internal                  Code = "internal"
 )
 
@@ -171,5 +177,11 @@ var All = []Code{
 	XlsxNoSheetFound,
 	XlsxNoCachedValues,
 	XlsxProcessFailed,
+	ScheduleNameRequired,
+	ScheduleNoFiles,
+	RecipientRequired,
+	RecipientDuplicate,
+	ProcessorExtension,
+	FolderOpenFailed,
 	Internal,
 }

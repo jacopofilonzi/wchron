@@ -62,7 +62,9 @@
 // CleanTemp removes what a crash left behind, at startup.
 //
 // Logs: one structured line per problem (code, params with phone numbers
-// masked) and one summary per run. Only this package and notify call
+// masked) and one summary per run ("pipeline: run finished", with the
+// schedule's id and name, counts and the most severe problem: the Status
+// page's run history is read from it, see app.RunHistory). Only this package and notify call
 // Channel.Send (AGENTS.md invariant).
 package pipeline
 
@@ -259,7 +261,8 @@ func (p *Pipeline) Run(ctx context.Context, job scheduler.Job) (res scheduler.Re
 	if !job.Manual && !job.Deadline.IsZero() && p.o.Clock.Now().After(job.Deadline) {
 		late := apperr.New(apperr.SlotLate, fmt.Errorf("first send %s after the slot", p.o.Clock.Now().Sub(job.Slot).Round(time.Second))).
 			With("schedule", sc.Name).With("slot", scheduler.SlotText(job.Slot.In(p.o.Location)))
-		p.o.Log.Info("pipeline: run skipped, too late for the first send", "schedule", sc.ID, "code", string(late.Code))
+		p.o.Log.Info("pipeline: run skipped, too late for the first send", "schedule", sc.ID, "name", sc.Name,
+			"code", string(late.Code), "params", late.Params)
 		return scheduler.Result{Status: state.ResultSkipped, Err: late, Problems: append([]*apperr.Error{late}, r.problems...)}
 	}
 
@@ -276,8 +279,15 @@ func (p *Pipeline) Run(ctx context.Context, job scheduler.Job) (res scheduler.Re
 	}
 	p.deliver(ctx, r, sc, items, schedCaption)
 	res = p.finish(ctx, r, sc)
-	p.o.Log.Info("pipeline: run finished", "schedule", sc.ID, "manual", job.Manual, "status", res.Status,
-		"sent", r.sent, "planned", r.planned, "problems", len(res.Problems), "took", p.o.Clock.Now().Sub(start).Round(time.Millisecond))
+	// The Status page's run history reads this line (app.RunHistory): keep
+	// its attributes.
+	errCode, errParams := "", map[string]string{}
+	if res.Err != nil {
+		errCode, errParams = string(res.Err.Code), maskParams(res.Err.Params)
+	}
+	p.o.Log.Info("pipeline: run finished", "schedule", sc.ID, "name", sc.Name, "manual", job.Manual, "status", res.Status,
+		"sent", r.sent, "planned", r.planned, "problems", len(res.Problems), "error_code", errCode, "error_params", errParams,
+		"took", p.o.Clock.Now().Sub(start).Round(time.Millisecond))
 	return res
 }
 

@@ -151,3 +151,30 @@ func Prune(backupsDir string, keep int) ([]string, error) {
 	}
 	return removed, errors.Join(errs...)
 }
+
+// Latest returns the time of the most recent backup in backupsDir (from its
+// folder name, a wall-clock time in loc: Create names folders with the local
+// time), or ok false when there is none.
+func Latest(backupsDir string, loc *time.Location) (t time.Time, ok bool, err error) {
+	entries, err := os.ReadDir(backupsDir)
+	if errors.Is(err, os.ErrNotExist) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("list %s: %w", backupsDir, err)
+	}
+	var last string
+	for _, e := range entries {
+		if e.IsDir() && backupDir.MatchString(e.Name()) && e.Name() > last {
+			last = e.Name()
+		}
+	}
+	if last == "" {
+		return time.Time{}, false, nil
+	}
+	t, err = time.ParseInLocation("20060102-150405", last[:len("20060102-150405")], loc)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("backup folder %s: %w", last, err)
+	}
+	return t, true, nil
+}

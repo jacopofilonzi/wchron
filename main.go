@@ -193,6 +193,7 @@ func main() {
 			if sched != nil {
 				sched.Reload(store.Schedules())
 			}
+			wails.Event.Emit(app.EventSchedules, app.SchedulesChanged{})
 		},
 		// The update check arrives with milestone 10.
 		OnOutdated: func(id string) { log.Warn("channel rejected as outdated: an update is needed", "channel", id) },
@@ -233,11 +234,12 @@ func main() {
 		}
 		return ev
 	}
+	// The processors: the only place that names them (AGENTS.md "Adding a processor").
+	processors := processor.NewRegistry(passthrough.New(), xlsxsnapshot.New())
 	pipe := pipeline.New(pipeline.Options{
-		Store:    store,
-		Channels: chans,
-		// The processors: the only place that names them (AGENTS.md "Adding a processor").
-		Processors: processor.NewRegistry(passthrough.New(), xlsxsnapshot.New()),
+		Store:      store,
+		Channels:   chans,
+		Processors: processors,
 		Reporter:   notifier,
 		Clock:      clock.Real{},
 		Location:   time.Local,
@@ -268,6 +270,18 @@ func main() {
 	})
 	svc := app.NewService(store, registry, chans, sched, paths.LogsDir(), clock.Real{})
 	app.SetSheetReader(svc, xlsxsnapshot.ReadSheets)
+	app.Configure(svc, app.Extras{
+		Processors: processors,
+		DataDir:    paths.DataDir(),
+		BackupsDir: paths.BackupsDir(),
+		// After every schedule change from the GUI: the scheduler picks it up
+		// at once and the list refreshes.
+		Changed: func(id string) {
+			sched.Reload(store.Schedules())
+			wails.Event.Emit(app.EventSchedules, app.SchedulesChanged{ID: id})
+		},
+		OpenFolder: platform.OpenFolder,
+	})
 	wails.RegisterService(application.NewService(svc))
 	wails.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		// On the main thread, like a registered service's startup: it registers

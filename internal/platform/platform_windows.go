@@ -5,6 +5,7 @@ package platform
 import (
 	"errors"
 	"fmt"
+	"os/exec"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
@@ -85,5 +86,16 @@ func FatalDialog(title, message string) error {
 	if _, err := windows.MessageBox(0, m, t, mbOK|mbIconError|mbSetForeground|mbTopmost); err != nil {
 		return fmt.Errorf("MessageBoxW: %w", err)
 	}
+	return nil
+}
+
+// OpenFolder shows a folder in Windows Explorer. Explorer's exit code means
+// nothing (it is often 1 on success), so only a failure to start counts.
+func OpenFolder(path string) error {
+	cmd := exec.Command("explorer.exe", path)
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start explorer on %s: %w", path, err)
+	}
+	go func() { _ = cmd.Wait() }()
 	return nil
 }

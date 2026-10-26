@@ -5,7 +5,8 @@
 //
 // Surface: SleepInhibitor, Autostart, Paths (data dir layout, paths.go),
 // FatalDialog (the startup error box, MessageBoxW) and OpenShared / IsLocked
-// (files.go: reading the originals without disturbing Excel) are implemented;
+// (files.go: reading the originals without disturbing Excel) and OpenFolder
+// (Explorer, for "open the data/log folder") are implemented;
 // Protect/Unprotect (DPAPI) come later. The desktop toast is the Wails
 // notifications service, adapted in internal/toast. Single instance is
 // handled by Wails (application.Options.SingleInstance), not here.

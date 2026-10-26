@@ -39,3 +39,6 @@ func OpenExclusive(string) (io.Closer, error) { return nil, errUnsupported }
 
 // IsLocked is always false outside Windows (advisory locks don't block reads).
 func IsLocked(error) bool { return false }
+
+// OpenFolder is a stub until a Linux/macOS implementation exists.
+func OpenFolder(string) error { return errUnsupported }

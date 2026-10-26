@@ -33,6 +33,9 @@ func (Processor) Extensions() []string { return []string{} }
 // Validate accepts any options (there are none; extra keys are ignored).
 func (Processor) Validate(json.RawMessage) error { return nil }
 
+// OutputName is the original's name: the copy is unchanged.
+func (Processor) OutputName(name string) string { return name }
+
 // Process copies src into env.TmpDir.
 func (Processor) Process(ctx context.Context, src processor.Source, _ json.RawMessage, env processor.Env) (processor.Output, func(), error) {
 	dst, cleanup, err := Copy(ctx, src, env.TmpDir)
