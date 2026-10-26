@@ -2,4 +2,4 @@
 package version
 
 // Version is the app version (x.y.z). Change it only with `make version V=x.y.z`.
-const Version = "0.4.0"
+const Version = "0.5.0"

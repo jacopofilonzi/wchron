@@ -10,7 +10,7 @@ info:
   description: "Scheduled file sending to WhatsApp"
   copyright: "(c) 2026, Jacopo Filonzi"
   comments: ""
-  version: "0.4.0"
+  version: "0.5.0"
 
 # Dev mode configuration (`make dev`)
 dev_mode:
