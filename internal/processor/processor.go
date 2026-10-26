@@ -17,11 +17,16 @@
 // temp.unavailable; an original that can't be read is file.locked /
 // file.unreadable (resolver.Open).
 //
-// Processors:
-//   - passthrough (default): the file unchanged, through the temp copy.
-//   - xlsx-sheets (milestone 7): the workbook reduced to the chosen sheets,
-//     formulas turned into their cached values; registered next to
-//     passthrough in main.go when it lands.
+// Processors (labels: ui.processor.<type>.name / .description):
+//   - passthrough (default; "Original" in the GUI): the file unchanged,
+//     through the temp copy. Any file type.
+//   - xlsx-snapshot ("Values only"): an Excel workbook without formulas or
+//     macros, reduced to the chosen sheets, always saved as .xlsx (package
+//     xlsxsnapshot). Only for the Extensions it lists.
+//
+// Output.Name is the processed file's own name (e.g. "report.xlsx" for
+// "report.xlsm"); the pipeline then applies the spec's send name
+// (resolver.SendName).
 package processor
 
 import (
@@ -76,12 +81,19 @@ type Field struct {
 	Key      string    `json:"key"`
 	Kind     FieldKind `json:"kind"`
 	Required bool      `json:"required"`
+	// Tokens says the value is a token template (the GUI shows the token
+	// hint and the live preview).
+	Tokens bool `json:"tokens"`
 }
 
 // Processor is one kind of processing.
 type Processor interface {
 	// Type is the id stored in config.FileSpec.Processor.
 	Type() string
+	// Extensions are the file extensions it handles (lowercase, with the
+	// dot); empty means any file. For the editor: at run time a file of
+	// another type is the processor's own error.
+	Extensions() []string
 	OptionsSchema() []Field
 	// Validate checks the options (processor.options_invalid, or the
 	// processor's own codes).
@@ -119,15 +131,22 @@ func (r *Registry) Get(typ string) (Processor, error) {
 
 // Schema is a processor's options schema for the GUI.
 type Schema struct {
-	Type    string  `json:"type"`
-	Options []Field `json:"options"`
+	Type string `json:"type"`
+	// Extensions the processor handles (empty: any file).
+	Extensions []string `json:"extensions"`
+	Options    []Field  `json:"options"`
 }
 
 // Schemas returns every processor's schema, in registration order.
 func (r *Registry) Schemas() []Schema {
 	out := make([]Schema, 0, len(r.order))
 	for _, t := range r.order {
-		out = append(out, Schema{Type: t, Options: r.byType[t].OptionsSchema()})
+		p := r.byType[t]
+		ext := p.Extensions()
+		if ext == nil {
+			ext = []string{}
+		}
+		out = append(out, Schema{Type: t, Extensions: ext, Options: p.OptionsSchema()})
 	}
 	return out
 }

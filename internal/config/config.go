@@ -181,11 +181,16 @@ type FileSpec struct {
 	PathPattern string    `json:"path_pattern"`
 	Match       MatchMode `json:"match"`
 	// Processor is a type from the processor registry ("passthrough",
-	// "xlsx-sheets"…); its options are processor-specific.
+	// "xlsx-snapshot"…); its options are processor-specific.
 	Processor        string          `json:"processor"`
 	ProcessorOptions json.RawMessage `json:"processor_options"`
 	// Caption overrides the schedule caption when set (nil: inherit).
 	Caption *string `json:"caption,omitempty"`
+	// SendName is the file name the recipient sees: a token template rendered
+	// at the slot time ("" keeps the name of the processed file). Checked by
+	// resolver.SendName (filespec.send_name_invalid). Added to v1 in place (v1
+	// was never released), no migration step.
+	SendName string `json:"send_name,omitempty"`
 }
 
 // Default is the configuration of a fresh install.

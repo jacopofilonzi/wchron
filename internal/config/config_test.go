@@ -28,7 +28,8 @@ const v1Full = `{
     "recipients": [{"id": "r-1", "channel_id": "wa-1", "target": {"kind": "group", "jid": "000@g.us"}, "display_name": "Team", "verified": "yes"}],
     "caption": "Report {date:DD-MM-YYYY}",
     "files": [{"id": "f-1", "path_pattern": "C:\\Reports\\{date:YYYY-MM-DD}.xlsx", "match": "newest",
-               "processor": "xlsx-sheets", "processor_options": {"sheets": ["Summary"]}, "caption": "Only this"}]
+               "processor": "xlsx-snapshot", "processor_options": {"sheets": ["Summary"]}, "caption": "Only this",
+               "send_name": "Report {date:DD.MM.YYYY}"}]
   }]
 }`
 

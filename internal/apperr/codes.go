@@ -78,6 +78,13 @@ const (
 	SendCaptionTooLong        Code = "send.caption_too_long"
 	SendFilesUnsupported      Code = "send.files_unsupported"
 	NotifyFailed              Code = "notify.failed"
+	FilespecSendNameInvalid   Code = "filespec.send_name_invalid"
+	XlsxNotXlsx               Code = "xlsx.not_xlsx"
+	XlsxOpenFailed            Code = "xlsx.open_failed"
+	XlsxSheetMissing          Code = "xlsx.sheet_missing"
+	XlsxNoSheetFound          Code = "xlsx.no_sheet_found"
+	XlsxNoCachedValues        Code = "xlsx.no_cached_values"
+	XlsxProcessFailed         Code = "xlsx.process_failed"
 	Internal                  Code = "internal"
 )
 
@@ -157,5 +164,12 @@ var All = []Code{
 	SendCaptionTooLong,
 	SendFilesUnsupported,
 	NotifyFailed,
+	FilespecSendNameInvalid,
+	XlsxNotXlsx,
+	XlsxOpenFailed,
+	XlsxSheetMissing,
+	XlsxNoSheetFound,
+	XlsxNoCachedValues,
+	XlsxProcessFailed,
 	Internal,
 }

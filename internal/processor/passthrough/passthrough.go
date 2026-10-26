@@ -27,6 +27,9 @@ func New() Processor { return Processor{} }
 func (Processor) Type() string                     { return config.ProcessorPassthrough }
 func (Processor) OptionsSchema() []processor.Field { return []processor.Field{} }
 
+// Extensions is empty: any file.
+func (Processor) Extensions() []string { return []string{} }
+
 // Validate accepts any options (there are none; extra keys are ignored).
 func (Processor) Validate(json.RawMessage) error { return nil }
 
