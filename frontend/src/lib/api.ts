@@ -2,9 +2,28 @@
 // (nil slices/maps arrive as null) and turns failures into AppError values
 // whose `code` the UI maps to `error.<code>` in the catalog.
 import { Events } from "@wailsio/runtime";
-import { Service, type RunEvent, type Snapshot } from "../../bindings/github.com/jacopofilonzi/wchron/internal/app";
+import {
+  Service,
+  type FieldProblem,
+  type FilePreview,
+  type PreviewFile,
+  type RunEvent,
+  type RunRecord,
+  type SaveResult,
+  type ScheduleSummary,
+  type Snapshot,
+} from "../../bindings/github.com/jacopofilonzi/wchron/internal/app";
 import type { Ref } from "../../bindings/github.com/jacopofilonzi/wchron/internal/apperr";
-import type { Cadence, Theme } from "../../bindings/github.com/jacopofilonzi/wchron/internal/config";
+import type {
+  Cadence,
+  FileSpec,
+  MatchMode,
+  Recipient,
+  Schedule,
+  Theme,
+  Weekday,
+} from "../../bindings/github.com/jacopofilonzi/wchron/internal/config";
+import type { Field as ProcessorField, Schema as ProcessorSchema } from "../../bindings/github.com/jacopofilonzi/wchron/internal/processor";
 import type { Lang } from "../../bindings/github.com/jacopofilonzi/wchron/internal/i18n";
 import type { Entry as LogEntry } from "../../bindings/github.com/jacopofilonzi/wchron/internal/logging";
 import type {
@@ -20,8 +39,12 @@ import type {
 } from "../../bindings/github.com/jacopofilonzi/wchron/internal/provider";
 
 export type { Snapshot, Theme, Lang, LogEntry, Cadence, RunEvent };
+export type { Schedule, FileSpec, Recipient, Weekday, ScheduleSummary, FieldProblem, FilePreview, PreviewFile, RunRecord };
+export type { ProcessorSchema, ProcessorField };
+export { CadenceMode, MatchMode, Verified } from "../../bindings/github.com/jacopofilonzi/wchron/internal/config";
 export type { ChannelInfo, ChannelStatus, DeleteResult, Field, ProviderInfo, PairingEvent, Target, TargetCheck, Usage };
 export { ChannelsState } from "../../bindings/github.com/jacopofilonzi/wchron/internal/app";
+export { FieldKind as ProcessorFieldKind } from "../../bindings/github.com/jacopofilonzi/wchron/internal/processor";
 export { Theme as Themes } from "../../bindings/github.com/jacopofilonzi/wchron/internal/config";
 export { Lang as Langs } from "../../bindings/github.com/jacopofilonzi/wchron/internal/i18n";
 export { State as ChannelStates, PairKind } from "../../bindings/github.com/jacopofilonzi/wchron/internal/provider";
@@ -71,6 +94,40 @@ function normSnapshot(s: Snapshot): Snapshot {
 
 function normFields(fs: Field[] | null): Field[] {
   return (fs ?? []).map((f) => ({ ...f, options: f.options ?? [] }));
+}
+
+/** A problem under one field of a form (`field` as addressed by Go, e.g. `files.<id>.path_pattern`). */
+export interface Problem {
+  field: string;
+  error: AppError;
+}
+
+function normProblems(ps: FieldProblem[] | null): Problem[] {
+  return (ps ?? []).map((p) => ({ field: p.field, error: { code: p.code, params: (p.params ?? {}) as Record<string, string> } }));
+}
+
+function normRecipients(rs: Recipient[] | null): Recipient[] {
+  return rs ?? [];
+}
+
+/** Go nil slices arrive as null: every list of a schedule becomes an array. */
+export function normSchedule(s: Schedule): Schedule {
+  return {
+    ...s,
+    cadence: { ...s.cadence, times: s.cadence.times ?? [], days: s.cadence.days ?? [] },
+    recipients: normRecipients(s.recipients),
+    files: (s.files ?? []).map((f) => ({ ...f, processor_options: f.processor_options ?? {} })),
+  };
+}
+
+function normSummary(s: ScheduleSummary): ScheduleSummary {
+  return { ...s, schedule: normSchedule(s.schedule), last_error: normRef(s.last_error), invalid: normRef(s.invalid) };
+}
+
+/** The outcome of saving a schedule: the saved one, or the problems under the fields. */
+export interface Saved {
+  schedule: Schedule | null;
+  problems: Problem[];
 }
 
 const snap = (fn: () => Promise<Snapshot>) => call(async () => normSnapshot(await fn()));
@@ -131,6 +188,53 @@ export const api = {
     }),
   listTargets: (channelID: string) => call(async (): Promise<Target[]> => (await Service.ListTargets(channelID)) ?? []),
 
+  /** Every schedule with its last result and next run. */
+  listSchedules: () => call(async (): Promise<ScheduleSummary[]> => ((await Service.ListSchedules()) ?? []).map(normSummary)),
+  getSchedule: (id: string) => call(async () => normSchedule(await Service.GetSchedule(id))),
+  /** The defaults of a new schedule (not saved; empty id). */
+  newSchedule: () => call(async () => normSchedule(await Service.NewSchedule())),
+  /** A new file spec with its id. */
+  newFileSpec: () => call(async (): Promise<FileSpec> => {
+    const f = await Service.NewFileSpec();
+    return { ...f, processor_options: f.processor_options ?? {} };
+  }),
+  newRecipientID: () => call(() => Service.NewRecipientID()),
+  /** Validates and saves (an empty id adds it); problems come back under their fields, nothing saved then. */
+  saveSchedule: (s: Schedule) =>
+    call(async (): Promise<Saved> => {
+      const r: SaveResult = await Service.SaveSchedule(s);
+      return { schedule: r.schedule ? normSchedule(r.schedule) : null, problems: normProblems(r.problems) };
+    }),
+  /** A disabled copy right after the original, named "<name> (copy)". */
+  duplicateSchedule: (id: string) => call(async () => normSchedule(await Service.DuplicateSchedule(id))),
+  /** Permanent: call only after the confirmation dialog. */
+  deleteSchedule: (id: string) => call(() => Service.DeleteSchedule(id)),
+  setScheduleEnabled: (id: string, on: boolean) => call(async () => normSchedule(await Service.SetScheduleEnabled(id, on))),
+  processorSchemas: () =>
+    call(async (): Promise<ProcessorSchema[]> =>
+      ((await Service.ProcessorSchemas()) ?? []).map((p) => ({ ...p, extensions: p.extensions ?? [], options: p.options ?? [] })),
+    ),
+  /** What a pattern resolves to now; a problem comes back in `error`, never as a failure. */
+  previewFiles: (pattern: string, match: MatchMode) =>
+    call(async (): Promise<FilePreview> => {
+      const p = await Service.PreviewFiles(pattern, match);
+      return { ...p, files: p.files ?? [], error: normRef(p.error) };
+    }),
+  /** The names the recipients would see now (same rules as a run: extension, numbering). */
+  previewSendName: (template: string, pattern: string, match: MatchMode, processor: string) =>
+    call(async (): Promise<string[]> => (await Service.PreviewSendName(template, pattern, match, processor)) ?? []),
+  errorRecipients: () => call(async (): Promise<Recipient[]> => normRecipients(await Service.ErrorRecipients())),
+  /** Replaces the error recipients; problems come back under `error_recipients.<id>`, nothing saved then. */
+  saveErrorRecipients: (rs: Recipient[]) => call(async (): Promise<Problem[]> => normProblems(await Service.SaveErrorRecipients(rs))),
+  dataDir: () => call(() => Service.DataDir()),
+  openDataDir: () => call(() => Service.OpenDataDir()),
+  openLogsDir: () => call(() => Service.OpenLogsDir()),
+  /** When the data was last backed up (RFC 3339), or null. */
+  lastBackup: () => call(() => Service.LastBackup()),
+  /** The most recent runs and skips from the log, newest first. */
+  runHistory: (limit: number) =>
+    call(async (): Promise<RunRecord[]> => ((await Service.RunHistory(limit)) ?? []).map((r) => ({ ...r, error: normRef(r.error) }))),
+
   /** Acts for real: runs a schedule now (no days/window/tolerance); `schedule.busy` if it is already running. The outcome arrives through onRunFinished. */
   sendNow: (scheduleID: string) => call(() => Service.SendNow(scheduleID)),
   /** Clears the tray's error state; the Status page calls it when it opens. */
@@ -144,6 +248,11 @@ export function onState(fn: (s: Snapshot) => void): () => void {
 
 function normRun(r: RunEvent): RunEvent {
   return { ...r, problems: (r.problems ?? []).map((p) => ({ ...p, params: p.params ?? {} })) };
+}
+
+/** Subscribes to the schedule changes (saved, deleted, enabled, recipients removed with a channel). */
+export function onSchedulesChanged(fn: () => void): () => void {
+  return Events.On("schedules:changed", () => fn());
 }
 
 /** Subscribes to the end of every run (status and problems); returns the unsubscribe function. */

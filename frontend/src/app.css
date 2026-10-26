@@ -33,6 +33,12 @@
   /* QR codes stay dark on light in every theme, so phones can read them. */
   --c-qr-dark: #000000;
   --c-qr-light: #ffffff;
+  --c-accent-soft: #eef2ff;
+  --c-on-accent-soft: #1e3fb0;
+  --c-segment: #f1f1f4;
+  --c-success-soft: #eaf6ef;
+  --c-warning-soft: #fff6ea;
+  --c-danger-soft: #fdeeee;
   color-scheme: light;
 }
 
@@ -67,6 +73,12 @@
   --c-backdrop: rgb(0 0 0 / 0.6);
   --c-qr-dark: #000000;
   --c-qr-light: #ffffff;
+  --c-accent-soft: #1f2a4d;
+  --c-on-accent-soft: #c9d4ff;
+  --c-segment: #26262c;
+  --c-success-soft: #173326;
+  --c-warning-soft: #3a2a14;
+  --c-danger-soft: #3d1c1a;
   color-scheme: dark;
 }
 
@@ -97,6 +109,12 @@
     --c-backdrop: rgb(0 0 0 / 0.6);
     --c-qr-dark: #000000;
     --c-qr-light: #ffffff;
+    --c-accent-soft: #1f2a4d;
+    --c-on-accent-soft: #c9d4ff;
+    --c-segment: #26262c;
+    --c-success-soft: #173326;
+    --c-warning-soft: #3a2a14;
+    --c-danger-soft: #3d1c1a;
     color-scheme: dark;
   }
 }
@@ -128,6 +146,13 @@
   --color-backdrop: var(--c-backdrop);
   --color-qr-dark: var(--c-qr-dark);
   --color-qr-light: var(--c-qr-light);
+  --color-accent-soft: var(--c-accent-soft);
+  --color-on-accent-soft: var(--c-on-accent-soft);
+  --color-segment: var(--c-segment);
+  --color-success-soft: var(--c-success-soft);
+  --color-warning-soft: var(--c-warning-soft);
+  --color-danger-soft: var(--c-danger-soft);
+  --font-mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
 }
 
 html,
@@ -272,5 +297,147 @@ body {
   &:hover:not(:disabled) {
     background: var(--c-danger);
     filter: brightness(1.08);
+  }
+}
+
+/* A form section of a page (editor, settings): a card with a heading. */
+@utility section-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  font-size: 13px;
+}
+
+@utility section-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+/* Segmented control: a grey track with the selected button raised. */
+@utility segmented {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--c-segment);
+  width: fit-content;
+  & > button {
+    height: 28px;
+    padding: 0 12px;
+    border-radius: 6px;
+    border: none;
+    background: transparent;
+    color: var(--c-muted);
+    font: inherit;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  & > button[aria-pressed="true"] {
+    background: var(--c-surface);
+    color: var(--c-text);
+    font-weight: 500;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+  }
+}
+
+/* A toggle chip (days of the week). */
+@utility chip-toggle {
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid var(--c-control-border);
+  background: var(--c-surface);
+  color: var(--c-muted);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  &[aria-pressed="true"] {
+    border-color: var(--c-accent);
+    background: var(--c-accent-soft);
+    color: var(--c-on-accent-soft);
+    font-weight: 500;
+  }
+}
+
+/* A value chip with a remove button (sheet names, fixed times). */
+@utility chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding: 0 4px 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--c-control-border);
+  font-size: 12px;
+}
+
+/* Small inline label: verified, invalid, processor kind. */
+@utility badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* A link-looking button (shortcuts like "Weekdays", "Read the sheets"). */
+@utility link-btn {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: var(--c-accent);
+  cursor: pointer;
+  &:hover:not(:disabled) {
+    text-decoration: underline;
+  }
+  &:disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+}
+
+/* A square icon button (move up/down, remove). */
+@utility icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--c-text-soft);
+  font: inherit;
+  cursor: pointer;
+  &:hover:not(:disabled) {
+    background: var(--c-nav-active);
+  }
+  &:disabled {
+    cursor: default;
+    opacity: 0.35;
+  }
+}
+
+@utility mono {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+/* A danger action that is not the main one (Delete in a side panel). */
+@utility btn-danger-outline {
+  color: var(--c-danger);
+  border-color: var(--c-danger);
+  background: var(--c-surface);
+  &:hover:not(:disabled) {
+    background: var(--c-danger-soft);
   }
 }

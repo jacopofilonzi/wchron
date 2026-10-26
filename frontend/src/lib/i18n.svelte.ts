@@ -20,13 +20,18 @@ export function lang(): Lang {
 }
 
 /** The text for key in the current language, with `{name}` placeholders filled from params. */
-export function t(key: Key, params: Record<string, string> = {}): string {
+export function t(key: Key, params: Record<string, string | undefined> = {}): string {
   const text = (current === Langs.EN ? en : it)[key];
   return text.replace(/\{(\w+)\}/g, (m, name: string) => params[name] ?? m);
 }
 
 /** The text for an error code (`error.<code>`), falling back to `error.internal`. */
-export function tError(code: string, params: Record<string, string> = {}): string {
+export function tError(code: string, params: Record<string, string | undefined> = {}): string {
   const key = `error.${code}`;
   return key in en ? t(key as Key, params) : t("error.internal");
+}
+
+/** Whether the catalog has a key (for optional texts such as a processor option's hint). */
+export function has(key: string): key is Key {
+  return key in en;
 }
