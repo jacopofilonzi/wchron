@@ -32,13 +32,13 @@ endif
 # Packages without Wails, vetted for Linux too (the platform stubs must compile).
 CROSS_PKGS = ./locales/... ./internal/apperr/... ./internal/i18n/... ./internal/platform/... ./internal/logging/... \
   ./internal/version/... ./internal/devenv/... ./internal/fsutil/... ./internal/migrate/... ./internal/config/... \
-  ./internal/state/... ./internal/backup/... ./internal/startup/... ./internal/clock/... ./internal/tokens/...
+  ./internal/state/... ./internal/backup/... ./internal/startup/... ./internal/clock/... ./internal/tokens/... ./internal/logo/...
 
 # go:embed needs frontend/dist to hold a file before the frontend is built.
 DIST_GUARD = node -e "const fs=require('fs');fs.mkdirSync('frontend/dist',{recursive:true});if(!fs.readdirSync('frontend/dist').length)fs.writeFileSync('frontend/dist/.keep','')"
 
 .DEFAULT_GOAL := help
-.PHONY: help deps dev build package run bindings test vet vet-cross check version clean
+.PHONY: help deps dev build package run bindings icons test vet vet-cross check version clean
 
 help: ## Show this list
 	@node -e "for (const l of require('fs').readFileSync('Makefile','utf8').split(/\r?\n/)) { const m = /^([a-z-]+):.*## (.*)$$/.exec(l); if (m) console.log('  ' + m[1].padEnd(10) + ' ' + m[2]); }"
@@ -61,6 +61,9 @@ run: build ## Build and start the app
 bindings: ## Regenerate frontend/bindings from the Go service
 	$(DIST_GUARD)
 	wails3 generate bindings -clean=true -ts -i
+
+icons: ## Regenerate the logo assets (icon.ico, appicon.png, logo.svg) from internal/logo
+	go run ./internal/logo/genicons
 
 test: ## Go tests
 	$(DIST_GUARD)
