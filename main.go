@@ -20,6 +20,7 @@ import (
 
 	"github.com/jacopofilonzi/wchron/internal/app"
 	"github.com/jacopofilonzi/wchron/internal/apperr"
+	"github.com/jacopofilonzi/wchron/internal/clock"
 	"github.com/jacopofilonzi/wchron/internal/config"
 	"github.com/jacopofilonzi/wchron/internal/devenv"
 	"github.com/jacopofilonzi/wchron/internal/i18n"
@@ -154,7 +155,7 @@ func main() {
 	if err := store.Start(); err != nil {
 		log.Warn("keep awake at startup", "err", err)
 	}
-	wails.RegisterService(application.NewService(app.NewService(store, paths.LogsDir())))
+	wails.RegisterService(application.NewService(app.NewService(store, paths.LogsDir(), clock.Real{})))
 
 	window = wails.Window.NewWithOptions(application.WebviewWindowOptions{
 		Title:            "wchron",

@@ -51,6 +51,8 @@ export const api = {
     call(async (): Promise<LogEntry[]> =>
       ((await Service.Logs(level, limit)) ?? []).map((e) => ({ ...e, attrs: e.attrs ?? {} })),
     ),
+  /** A token template rendered for now in the current language; a `token.*` error carries `pos` (1-based character). */
+  previewTokens: (template: string) => call(() => Service.PreviewTokens(template)),
 };
 
 /** Subscribes to every state change pushed by Go (tray or window); returns the unsubscribe function. */
