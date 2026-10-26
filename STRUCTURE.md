@@ -1,14 +1,15 @@
 # Project structure
 
 wchron is a Windows tray app for one user: at scheduled times it resolves file paths (with date tokens),
-optionally reduces Excel workbooks to selected sheets, and sends the files to one or more recipients on
+optionally turns Excel workbooks into values-only copies of selected sheets, and sends the files to one or more recipients on
 one or more channels. Delivery goes through provider plug-ins: WhatsApp (whatsmeow linked device) first,
 Telegram/ntfy possible later without structural changes. One Go process holds the core (scheduler,
 pipeline, channels, state); the Svelte GUI in a Wails window talks to it through generated bindings and events.
 
-> Status: milestones 1 (skeleton), 2 (data, logging), 3 (tokens), 4 (scheduler), 5 (providers, WhatsApp) and
-> 6 (pipeline, resolver, passthrough, notifications) are in place; the rest of this file is the planned layout.
-> Packages and files that exist today are marked **(m1)** … **(m6)**. Update this file as each milestone lands.
+> Status: milestones 1 (skeleton), 2 (data, logging), 3 (tokens), 4 (scheduler), 5 (providers, WhatsApp),
+> 6 (pipeline, resolver, passthrough, notifications) and 7 (values-only Excel processor, send names) are in
+> place; the rest of this file is the planned layout.
+> Packages and files that exist today are marked **(m1)** … **(m7)**. Update this file as each milestone lands.
 
 ## Milestones
 
@@ -23,8 +24,9 @@ pipeline, channels, state); the Svelte GUI in a Wails window talks to it through
       DPAPI secrets are deferred to the first provider that needs one (Telegram/ntfy).
 - [x] 6. Pipeline with `passthrough`, resolver, multiple files × multiple recipients, pauses, error
       aggregation, notifications to the error recipients (6 h repeat, "works again"), send now, toasts.
-- [ ] 7. `xlsx-sheets` processor with tests on synthetic workbooks (formulas, missing sheet, locked file,
-      no cached values).
+- [x] 7. `xlsx-snapshot` processor ("values only": no formulas, no macros, chosen sheets, .xlsx) with tests
+      on synthetic workbooks (formulas, missing sheet, locked file, no cached values); `send_name` for every
+      file spec; `ReadSheets`.
 - [ ] 8. GUI screens (channels page, recipient picker), previews, delete confirmations, error recipients.
 - [ ] 9. Hardening: reconnection, installer, release workflow (log rotation landed with milestone 2).
 - [ ] 10. Update notification and self-update.
@@ -38,7 +40,8 @@ wchron/
 │                       after the scheduler on ApplicationStarted, closed after it on quit;
 │                       (m6) toaster, notifier, processor registry (the only place naming the processors),
 │                       pipeline (the scheduler's Runner; OnStart/OnFinish → Store + run events); on
-│                       ApplicationStarted: toasts (main thread), temp cleanup, scheduler, channels
+│                       ApplicationStarted: toasts (main thread), temp cleanup, scheduler, channels;
+│                       (m7) xlsxsnapshot registered next to passthrough, its ReadSheets given to the service
 ├── internal/           Go (go.mod: 1.26, toolchain 1.27) — core and platform layer (see below)
 ├── locales/            it.json, en.json (shared i18n catalog, flat namespaced keys) + embed.go (m1)
 ├── frontend/           Svelte 5 + TS + Vite + Tailwind 4 — GUI
@@ -93,11 +96,18 @@ internal/
 │                   runner.go: Runner, Job (Manual), Result (Status, Err, Problems), SlotText. Design in doc.go
 ├── resolver/       (m6) path pattern → concrete file(s) at the slot time: tokens, absolute, `*`/`?` in the name
 │                   only (case-insensitive), match error | newest | all; Open (shared read, file.locked /
-│                   file.unreadable), Validate for the editor (filespec.*). Design in the package doc
+│                   file.unreadable), Validate for the editor (filespec.*). Design in the package doc;
+│                   (m7) sendname.go: SendName / ValidateSendName (token template, extension appended,
+│                   Windows name rules, filespec.send_name_invalid)
 ├── processor/      (m6) Processor interface (Type, OptionsSchema, Validate, Process → Output + cleanup), Env,
-│   │               Registry (processor.unknown), Schemas; design in the package doc
-│   ├── passthrough/ (m6) temp copy of the original (Copy, also for other processors); no options
-│   └── xlsxsheets/ (m7) sheets reduction
+│   │               Registry (processor.unknown), Schemas; design in the package doc; (m7) Extensions (empty:
+│   │               any file), Field.Tokens, Schema.extensions
+│   ├── passthrough/ (m6) "Original": temp copy of the original (Copy, also for other processors); no options
+│   └── xlsxsnapshot/ (m7) "Values only" (type xlsx-snapshot, excelize): formulas → cached values (never
+│                   recalculated), chosen sheets (`sheets`, tokens, empty = all), macros removed, always .xlsx;
+│                   snapshot.go (design in the package doc, Process, ReadSheets), workbook.go (package
+│                   structure and raw formula cells), clean.go (VBA parts, dangling rels/content types),
+│                   names.go (defined names pointing at removed sheets)
 ├── provider/       (m5) provider.go: Provider, Channel, Pairer, LogoutChannel interfaces, Status/State,
 │   │               Capabilities, Field schemas, Message; registry.go: Registry, Info; manager.go: Manager (open
 │   │               enabled channels, connect, backoff reconnect 5 s→5 min, pairing, logout, rename, create,
@@ -114,7 +124,7 @@ internal/
 ├── pipeline/       (m6) one run (scheduler.Runner): resolve + process every file once, slot.late before the first
 │                   send, each recipient all files in order (channels in parallel), captions, capability and
 │                   recipient checks, result ok | partial | failed | skipped, report to notify, temp cleanup,
-│                   CleanTemp at startup. Design in the package doc
+│                   CleanTemp at startup. Design in the package doc; (m7) send names, xlsx warnings
 ├── notify/         (m6) report fan-out: toast + text to each error recipient; Signature, 6 h repeat, "works
 │                   again" notice, notify.failed; manual runs toast only. Design in the package doc
 ├── toast/          (m6) notify.Toaster over the Wails notifications service (started by hand, never fatal;
@@ -168,9 +178,14 @@ on mount) and returns the Snapshot. The Snapshot (m6) also carries `sending` (an
 (`level`: minimum, `""` for all; `limit` 0 = 200, max 5000; `logs.read_failed`); its viewer is milestone 8.
 `frontend/bindings` is generated (`make bindings`, and by every build) and git-ignored.
 
+Excel (m7): `ReadSheets(pathPattern)` resolves the pattern now (tokens for now, current language; a wildcard
+takes the newest match) and returns the workbook's sheet names in workbook order, without macro sheets
+(`filespec.*`, `token.*`, `file.*`, `xlsx.not_xlsx`, `xlsx.open_failed`). The reader is set from main.go
+with `app.SetSheetReader` (a plain function: exported `Service` methods become bindings).
 Planned surface (names final at implementation): schedules CRUD (`ListSchedules`, `SaveSchedule`,
-`DeleteSchedule`: they validate with `scheduler.Validate`, `resolver.Validate` and the processors' `Validate`,
-check new recipients with `ValidateTarget` and call `Scheduler.Reload`), `ReadSheets(path)`, settings get/save,
+`DeleteSchedule`: they validate with `scheduler.Validate`, `resolver.Validate`, `resolver.ValidateSendName`
+and the processors' `Validate`, check new recipients with `ValidateTarget` and call `Scheduler.Reload`),
+settings get/save,
 `CheckUpdate`, `ProcessorSchemas` (`processor.Registry.Schemas`).
 Errors come back as `apperr.Error` serialized as `{code, params}`.
 
@@ -246,9 +261,13 @@ Missing fields are filled on load (nil lists become `[]`, empty enums their defa
 - `id`
 - `path_pattern`: absolute path with tokens and/or glob in the file name
 - `match`: `"error"` (default) | `"newest"` | `"all"`
-- `processor`: `"passthrough"` (default) | `"xlsx-sheets"` | future types
-- `processor_options`: processor-specific (e.g. `{ "sheets": ["{date:DD-MM-YYYY}", "Summary"] }`)
+- `processor`: `"passthrough"` (default; "Original" in the GUI) | `"xlsx-snapshot"` ("Values only") | future types
+- `processor_options`: processor-specific (xlsx-snapshot: `{ "sheets": ["{date:DD-MM-YYYY}", "Summary"] }`,
+  empty or absent list = all sheets)
 - `caption`: optional override of the schedule caption (absent: inherit; present, even `""`: override)
+- `send_name` (m7): optional token template, the file name the recipients see (absent or `""`: the processed
+  file's name; the output's extension is appended when the name has none). Added to v1 in place (v1 not
+  released), no migration step
 
 **`state.json`**: `schema_version`, `routine_active` (default true: the tray pause survives a restart),
 `last_app_version` (triggers the backup on upgrade), `notified_update_version`, `schedules`: map by
@@ -308,7 +327,7 @@ Routing is a minimal hash router (`#/schedules`, `#/settings`…). (m1) marks wh
 | `components/QrCode.svelte` | (m5) QR as SVG, `uqr` loaded lazily; dark on light in every theme |
 | `components/ConfirmDialog.svelte` | (m5) modal `<dialog>` confirmation (title, consequences, danger button) |
 | `lib/pairing.svelte.ts` | (m5) pairing steps per channel from `channel:qr` |
-| `lib/api.ts` | (m1) the only module calling the bindings: `AppError` `{code, params}` mapping, null normalization, `onState`; (m2) `logs`; (m3) `previewTokens`; (m4) `previewRuns`; (m5) channel calls, `fromRef`, `onPairing`; (m6) `sendNow`, `ackErrors`, `onRunFinished` |
+| `lib/api.ts` | (m1) the only module calling the bindings: `AppError` `{code, params}` mapping, null normalization, `onState`; (m2) `logs`; (m3) `previewTokens`; (m4) `previewRuns`; (m5) channel calls, `fromRef`, `onPairing`; (m6) `sendNow`, `ackErrors`, `onRunFinished`; (m7) `readSheets` |
 | `lib/state.svelte.ts` | (m1) Snapshot mirrored from Go (calls + `app:state` events), applies theme and language |
 | `lib/router.svelte.ts` | (m1) hash router |
 | `lib/i18n.svelte.ts` | (m1) `t()` / `tError()` over `../locales/*.json` (it typed as `typeof en`), current language |

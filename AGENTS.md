@@ -6,7 +6,7 @@ instead of re-reading the whole repo. What the app does, as the user sees it, is
 every error code the user can see is in [ERRORS.md](ERRORS.md).
 
 **Temporary: `REFERENCE.md`** (local, git-ignored, never committed) holds the detailed design rules of the
-packages not written yet (the `xlsx-sheets` processor, update).
+packages not written yet (update).
 Read the section of the package you're implementing. When the package lands, move its section
 into the package doc comment (and its tests), delete it from `REFERENCE.md`, and delete the file once it's
 empty.
@@ -16,7 +16,7 @@ See "Updating these guidelines" below to align them with the latest version.
 
 ## What it is
 
-wchron: a tray desktop app that sends files (optionally Excel workbooks reduced to selected sheets) at
+wchron: a tray desktop app that sends files (optionally Excel workbooks as values-only copies of selected sheets) at
 scheduled times to one or more recipients on one or more channels. Delivery is provider-agnostic
 (`internal/provider`): WhatsApp through a whatsmeow linked device is the first provider; Telegram, ntfy…
 must be addable as new providers without structural changes. Stack: Go (1.26+, see `go.mod`) +
@@ -187,7 +187,9 @@ i18n lives in one shared catalog used by both Go and the frontend.
   - `modernc.org/sqlite` v1.61 (no CGO): the driver name is `sqlite`, not `sqlite3`; pragmas go in the DSN as
     `?_pragma=foreign_keys(1)` after a plain path (no `file:` prefix, so Windows paths need no escaping).
   - `uqr` 0.1 (frontend, zero dependencies): QR encoding for the pairing, imported lazily.
-  - excelize v2: reads cached formula values, never recalculates.
+  - excelize `github.com/xuri/excelize/v2` v2.11.0 (`internal/processor/xlsxsnapshot` only): reads cached
+    formula values, never recalculates (never call `CalcCellValue` to "fix" values). It doesn't expose the
+    sheet kinds or raw formula cells: `xlsxsnapshot/workbook.go` reads them from the zip itself.
   - Svelte 5, Vite, Tailwind 4 (`@tailwindcss/vite`, CSS-first config, no `tailwind.config.js`).
   - `gopkg.in/natefinch/lumberjack.v2` (log rotation, used only in `internal/logging`).
 - Deleting is permanent, never a trash (agreed for this project): schedules, recipients, file specs and
@@ -300,15 +302,15 @@ i18n lives in one shared catalog used by both Go and the frontend.
 
 ## Adding a processor
 
-1. Create `internal/processor/<name>/` implementing `processor.Processor` (`Type`, `OptionsSchema`,
-   `Validate`, `Process`). `Process` works on a temp copy in `Env.TmpDir` (start from
+1. Create `internal/processor/<name>/` implementing `processor.Processor` (`Type`, `Extensions`,
+   `OptionsSchema`, `Validate`, `Process`). `Process` works on a temp copy in `Env.TmpDir` (start from
    `passthrough.Copy`, which reads the original with a shared open) and returns a cleanup func; warnings
    go in `Output.Warnings` (and their codes in `pipeline`'s `warnings` set).
 2. Register it in `main.go` (`processor.NewRegistry(passthrough.New(), …)`): the only place naming the
    processors (`internal/processor` can't import its sub-packages: import cycle). The GUI renders its
    options from `OptionsSchema`.
-3. Add its error codes to `internal/apperr`, `ERRORS.md` and both catalogs; labels for its options go in
-   `locales/*.json` under `ui.processor.<name>.*`.
+3. Add its error codes to `internal/apperr`, `ERRORS.md` and both catalogs; its name and description go in
+   `locales/*.json` as `ui.processor.<type>.name` / `.description`, its options under `ui.processor.<type>.<key>`.
 4. Tests with synthetic fixtures in `internal/processor/<name>/testdata`.
 
 ## Adding an error code
@@ -370,6 +372,14 @@ i18n lives in one shared catalog used by both Go and the frontend.
   stops the whole app. It needs `git.sr.ht/~jackmordaunt/go-toast/v2` (Wails' own dependency, in `go.sum`).
 - `processor.Process`'s cleanup and the run's temp dir are always removed by the pipeline; never write a
   processed copy outside `Env.TmpDir`.
+- excelize, saving a workbook as `.xlsx`, sets the plain content type but keeps the VBA project and the
+  parts and overrides of deleted chart/macro sheets: `xlsxsnapshot/clean.go` removes them after the write.
+  `DeleteSheet` is a silent no-op when excelize's `SheetCount` (worksheet parts only) is 1, so a chart
+  sheet next to a single worksheet would stay: the processor sets `SheetCount` to the full sheet count first.
+  Removing a formula filters the whole calc chain each time: drop the calc chain first.
+- Every exported method of `app.Service` becomes a Wails binding (a `func` parameter makes the generator warn):
+  wiring setters are plain functions (`app.SetSheetReader`).
+- gofmt rewrites `''` in doc comments as a typographic quote: don't write two single quotes in comments.
 - The glob in file names is the resolver's own (`*`, `?`, case-insensitive), not `filepath.Match`:
   `[` is common in real file names.
 - In `node -e "…"` edit scripts run from Git Bash, backticks in Go struct tags become command
