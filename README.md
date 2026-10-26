@@ -1,10 +1,12 @@
 # wchron
 
-Sends files to a WhatsApp number or group at scheduled times, from your Windows PC.
+Sends files at scheduled times to WhatsApp numbers and groups (other channels such as Telegram or ntfy
+can come later), from your Windows PC.
 
 wchron sits in the system tray and, at the times you set, picks the right file (for example today's
 report, found by a name with the date in it), optionally reduces an Excel workbook to the sheets you
-choose, and sends it as a document through your WhatsApp account, linked like WhatsApp Web.
+choose, and sends it to one or more recipients, for example as a document through your WhatsApp account,
+linked like WhatsApp Web. You can connect several accounts (channels), also of the same service.
 
 > **Status: under development.** This README describes the planned behaviour.
 
@@ -17,8 +19,8 @@ choose, and sends it as a document through your WhatsApp account, linked like Wh
 
 - Sends files on a schedule to one number or group per schedule, one file after the other with a short
   pause, with an optional caption.
-- Never sends error messages to the recipient: problems are shown as desktop notifications and,
-  optionally, sent to an "error notification number" (for example your own number).
+- Never sends error messages to the recipients: problems are shown as desktop notifications and,
+  optionally, sent to one or more "error recipients" (for example your own WhatsApp number).
 - Doesn't read or answer messages, doesn't send in bulk, doesn't embed WhatsApp Web.
 - Windows 10/11 only, for now. Italian and English. Light, dark or follow Windows.
 
@@ -29,12 +31,12 @@ and run it. It installs for the current user only (`%LOCALAPPDATA%\Programs\wchr
 administrator rights. wchron starts at login, minimized to the tray; launching it again just opens the
 window.
 
-On first start, open **WhatsApp** in the window and scan the QR code from your phone
+On first start, open **Channels** in the window, add a WhatsApp channel and scan the QR code from your phone
 (Settings → Linked devices → Link a device).
 
 ## Schedules
 
-Each schedule has a recipient, one or more files and a cadence:
+Each schedule has one or more recipients (on one or more channels), one or more files and a cadence:
 
 - **Interval**: every N hours and minutes, counted from a start time (default 00:00) and restarting each
   day, so 1h30 from 08:00 means 08:00, 09:30, 11:00… Optionally only inside a time window
@@ -52,7 +54,8 @@ that would start more than 5 minutes late is skipped too.
 Daylight saving time follows the Windows clock: a run in the hour skipped in spring doesn't happen; a run
 in the hour repeated in autumn happens once.
 
-**Recipient**: a number with the international prefix (checked to be on WhatsApp when you save), or one of
+**Recipients**: each one is a channel plus a target. On WhatsApp: a number with the international prefix
+(checked to be on WhatsApp when you save), or one of
 your groups, picked from a list. Renaming the group doesn't break the schedule.
 
 **Deleting** a schedule moves it to the trash, where you can restore it until you empty the trash.
@@ -91,11 +94,11 @@ sends the copy.
 ## When something goes wrong
 
 A missing, locked or unreadable file, a missing sheet or a failed send: that file is skipped, the other
-files still go out, and at the end one desktop notification (and, if set, one WhatsApp message to the
-error notification number) lists the problems. The next scheduled run simply tries again. Every problem
+files and recipients still get theirs, and at the end one desktop notification (and, if set, one message to each
+error recipient) lists the problems. The next scheduled run simply tries again. Every problem
 has a code; [ERRORS.md](ERRORS.md) lists them all.
 
-If WhatsApp disconnects, the tray icon shows it and wchron reconnects by itself; if the linked device was
+If a channel disconnects, the tray icon shows it and wchron reconnects by itself; if a WhatsApp linked device was
 removed, the window asks you to scan the QR again.
 
 ## Tray
@@ -104,18 +107,18 @@ removed, the window asks you to scan the QR again.
 - **Keep awake**: keeps the PC from sleeping while wchron runs (the screen can still turn off).
 - Open the window, see the connection state and last send, quit.
 
-The icon shows whether the routine is active, paused, sending, in error or disconnected from WhatsApp,
+The icon shows whether the routine is active, paused, sending, in error or with a channel disconnected,
 and whether keep awake is on.
 
 ## Updates
 
-wchron checks for a new release at startup, and also when WhatsApp rejects the connection (an update may
+wchron checks for a new release at startup, and also when a channel such as WhatsApp rejects the connection (an update may
 be needed). It only notifies you: nothing is installed until you click **Update**. Then it downloads the
 installer, waits until no send is in progress and the next one is at least 10 minutes away, closes,
 updates and restarts by itself.
 
 Before starting a new version, wchron backs up your data (`%APPDATA%\wchron\backups\`); if the backup
-fails, it doesn't start. Your schedules, settings and WhatsApp link are kept across updates.
+fails, it doesn't start. Your schedules, settings and channels (including the WhatsApp link) are kept across updates.
 
 ### Upgrade notes
 
@@ -124,7 +127,7 @@ None yet. Anything you need to do before installing a specific version will be l
 ## Your data
 
 Everything is in `%APPDATA%\wchron`: `config.json` (schedules, settings, trash), `state.json` (last runs),
-`session.db` (the WhatsApp link: keep it private), `logs\` and `backups\`.
+`channels\` (the WhatsApp link and other channel credentials: keep it private), `logs\` and `backups\`.
 
 ## Development
 

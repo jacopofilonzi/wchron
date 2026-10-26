@@ -16,14 +16,16 @@ See "Updating these guidelines" below to align them with the latest version.
 
 ## What it is
 
-wchron: a tray desktop app that sends files (optionally Excel workbooks reduced to selected sheets) to a
-WhatsApp number or group at scheduled times, through a whatsmeow linked-device session. Stack: Go (1.26+, see `go.mod`) +
+wchron: a tray desktop app that sends files (optionally Excel workbooks reduced to selected sheets) at
+scheduled times to one or more recipients on one or more channels. Delivery is provider-agnostic
+(`internal/provider`): WhatsApp through a whatsmeow linked device is the first provider; Telegram, ntfy…
+must be addable as new providers without structural changes. Stack: Go (1.26+, see `go.mod`) +
 Wails 3 (beta), Svelte 5 + TypeScript + Vite + Tailwind 4. Targets: Windows 10/11 only for now; OS-specific
 code stays behind interfaces so Linux/macOS can be added later. UI and backend texts in Italian (default)
 and English. One process, one binary, single instance (a second launch focuses the window); starts at
 login, minimized to the tray.
 
-Non-goals: receiving or reading WhatsApp messages (beyond session health and the group list), bulk or
+Non-goals: receiving or reading messages (beyond session health and the group/chat list), bulk or
 marketing sending, embedding WhatsApp Web, Linux/macOS builds (keep the code ready, don't ship them).
 Don't add features outside README.md / REFERENCE.md without asking; if something there turns out to be
 infeasible (e.g. a Wails 3 tray limitation), propose the alternative and ask before deviating.
@@ -66,19 +68,19 @@ infeasible (e.g. a Wails 3 tray limitation), propose the alternative and ask bef
   app needs none. Every new env var goes in `internal/devenv` **and** is documented in `.env.example`. The
   Makefile loads `.env` (`-include .env` + `export`), so `make dev` picks it up. Never commit `.env`.
 - **Never cause real side effects without asking**: messages to real users, writes to external services.
-  Tests use fakes (`sender.Fake`, fake clock, fake WhatsApp client) and fixtures; live checks are read-only.
+  Tests use fakes (`provider/fake`, fake clock) and fixtures; live checks are read-only.
   When running the app locally for a check, start from an empty data directory (`WCHRON_DATA_DIR` in
   `.env`) unless told otherwise, and stop it afterwards. In this project these act for real:
-  - every WhatsApp send: scheduled runs (`pipeline.Run`), the "send now" button, the message to the error
-    notification number (`notify.WhatsApp`);
-  - QR pairing, re-pair and logout (they create or remove a linked device on the WhatsApp account);
-  - the "is on WhatsApp" number check and the group list (read-only, but they hit WhatsApp's servers:
-    only with a test session);
+  - every `Channel.Send`, on any provider: scheduled runs (`pipeline.Run`), the "send now" button, the
+    reports to the error recipients (`notify`);
+  - channel setup: WhatsApp QR pairing, re-pair and logout (they create or remove a linked device on the
+    account); later, any provider login;
+  - `ValidateTarget` / `ListTargets` (read-only, but they hit the service: only with a test channel);
   - the update check/download (reads GitHub releases) and the installer it launches;
   - autostart (writes the user's `Run` registry key) and keep-awake (`SetThreadExecutionState`).
 - **Development never uses production credentials or services**: dev runs use their own data dir, so their
-  own WhatsApp session paired with a test number, never the personal session of the installed app. Test
-  recipients are numbers/groups you own.
+  own channels (WhatsApp paired with a test number, test bots/topics later), never the channels of the
+  installed app. Test recipients are numbers/groups/chats you own.
 
 ### Commits
 
@@ -118,23 +120,27 @@ i18n lives in one shared catalog used by both Go and the frontend.
 
 ## Invariants — don't break these
 
-- **The schedule's recipient never receives anything but the configured files and captions.** Errors and
-  notices go to the desktop and, if set, to the error notification number. The sender is never used for
-  anything else.
+- **A schedule's recipients never receive anything but the configured files and captions.** Errors and
+  notices go to the desktop and, if set, to the error recipients. `Channel.Send` is called only by the
+  pipeline and `notify`.
+- **The core never knows a provider.** Nothing outside `internal/provider/<type>` (and the frontend's
+  `providers/<type>/`) branches on a provider type or imports its library; everything goes through the
+  `Provider`/`Channel` interfaces, capabilities and schemas.
 - **Missed slots are never recovered.** No catch-up bursts, no retry loops: at most one short retry on a
   network failure, then skip and log. Slots are computed on the local wall clock of the system time zone.
 - **The original files are never modified.** Processors work on a temp copy, deleted also on failure.
 - The core (`internal/` except `internal/platform`, `internal/tray` and `main.go`) never imports
   Windows-specific packages and never branches on `runtime.GOOS`.
-- Session keys and the WhatsApp store are never logged; phone numbers in logs are masked except the last 3 digits.
+- Sessions, tokens and other channel secrets are never logged or stored in plain text (secrets: DPAPI in
+  `channels/<id>/`); phone numbers in logs are masked except the last 3 digits.
 - **Upgrading never loses data or stops the service.** Durable data is `config.json` (schedules, settings,
-  trash), `state.json` (last runs) and `session.db` (whatsmeow). IDs and formats stay backward compatible.
+  trash), `state.json` (last runs) and `channels/<id>/` (WhatsApp `session.db`, encrypted secrets). IDs and formats stay backward compatible.
   Format changes are migration steps appended to `internal/config/migrations.go` (and
   `internal/state/migrations.go`), never edits to one already released (pushed to `main`); each bumps
   `schema_version`. A migration that touches existing data gets a test that starts from a file at the
   previous version with realistic data. Before migrating, or when the app version changed since the last
-  run, the app copies the data files to `backups/<timestamp>-v<old version>/` (`session.db` via
-  `VACUUM INTO`) and refuses to start (`storage.backup_failed`) if the backup fails. A file with a
+  run, the app copies the data files to `backups/<timestamp>-v<old version>/` (SQLite files such as
+  `session.db` via `VACUUM INTO`) and refuses to start (`storage.backup_failed`) if the backup fails. A file with a
   `schema_version` newer than the app is never overwritten (`config.newer_version`). Anything the user must
   do before updating goes in the README upgrade notes.
 - Writes to `config.json` and `state.json` are atomic (temp file + rename).
@@ -188,7 +194,8 @@ i18n lives in one shared catalog used by both Go and the frontend.
 
 - One catalog for Go and the frontend: `locales/it.json` and `locales/en.json`, embedded in Go
   (`locales/embed.go`) and imported by the frontend. Keys are namespaced: `ui.*` (frontend only),
-  `tray.*`, `notify.*`, `wa.*` (texts sent over WhatsApp to the error number), `error.<code>`.
+  `tray.*`, `notify.*` (texts of the reports sent to the error recipients), `provider.<type>.*` (provider
+  labels, setup and target fields), `error.<code>`.
 - Placeholders are `{name}`, filled from the error `params` or the caller.
 - `en.json` is the reference set of keys: the frontend types `it` as `typeof en`, a Go test checks that both
   files have the same keys and that every code in `internal/apperr` has an `error.<code>` key.
@@ -235,6 +242,19 @@ i18n lives in one shared catalog used by both Go and the frontend.
 3. Regenerate the bindings (`make bindings`), then update every view that shows or edits it, and the fake
    backend in `frontend/e2e/mock`.
 4. Tests (valid value, invalid value, field missing in old files); update `STRUCTURE.md`.
+
+## Adding a provider (e.g. Telegram, ntfy)
+
+1. Create `internal/provider/<type>/` implementing `provider.Provider` and `provider.Channel`: capabilities
+   (files, max size, caption length, targets list, pairing), settings and target schemas, `Send`.
+   Secrets through `platform.Protect`, data under the channel dir it is given.
+2. Register it in `internal/provider/registry.go`.
+3. Frontend: `frontend/src/providers/<type>/` with the setup component (or the generic schema form) and
+   the target picker; register it in the providers map.
+4. Its error codes (`<prefix>.*`) in `internal/apperr`, `ERRORS.md` and both catalogs; labels under
+   `provider.<type>.*`.
+5. Tests against recorded fixtures or a fake server, never the live service; an opt-in live check only if
+   read-only.
 
 ## Adding a processor
 
