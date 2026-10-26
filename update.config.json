@@ -1,0 +1,31 @@
+{
+  "provider": "github",
+  "repository": {
+    "owner": "jacopofilonzi",
+    "name": "wchron",
+    "url": "https://github.com/jacopofilonzi/wchron"
+  },
+  "api_base_url": "https://api.github.com",
+  "channel": "stable",
+  "tag_prefix": "v",
+  "assets": {
+    "windows_amd64": {
+      "installer": "wchron-amd64-installer.exe",
+      "checksum": "wchron-amd64-installer.exe.sha256"
+    }
+  },
+  "installer": {
+    "scope": "user",
+    "silent_args": ["/S"]
+  },
+  "check": {
+    "on_startup": true,
+    "startup_delay_seconds": 30,
+    "on_whatsapp_failure": true,
+    "min_interval_minutes": 60,
+    "timeout_seconds": 15
+  },
+  "install": {
+    "min_minutes_before_next_slot": 10
+  }
+}

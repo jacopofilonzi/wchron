@@ -1,0 +1,7 @@
+.env
+.devdata/
+bin/
+node_modules/
+frontend/dist/
+.task/
+REFERENCE.md
