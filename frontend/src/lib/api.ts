@@ -94,6 +94,9 @@ export const api = {
   /** The next n run times of a cadence from now (RFC 3339, local offset); a `cadence.*` or `schedule.no_days` error if invalid. */
   previewRuns: (cadence: Cadence, n: number) =>
     call(async (): Promise<string[]> => (await Service.PreviewRuns(cadence, n)) ?? []),
+  /** The sheet names (workbook order) of the workbook a path pattern resolves to now (newest match), for "Values only"; `filespec.*`, `token.*`, `file.*`, `xlsx.not_xlsx`, `xlsx.open_failed` on error. */
+  readSheets: (pathPattern: string) =>
+    call(async (): Promise<string[]> => (await Service.ReadSheets(pathPattern)) ?? []),
 
   /** The available providers with their capabilities and field schemas. */
   providers: () =>

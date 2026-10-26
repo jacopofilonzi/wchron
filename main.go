@@ -267,7 +267,7 @@ func main() {
 		},
 	})
 	svc := app.NewService(store, registry, chans, sched, paths.LogsDir(), clock.Real{})
-	svc.SetSheetReader(xlsxsnapshot.ReadSheets)
+	app.SetSheetReader(svc, xlsxsnapshot.ReadSheets)
 	wails.RegisterService(application.NewService(svc))
 	wails.Event.OnApplicationEvent(events.Common.ApplicationStarted, func(*application.ApplicationEvent) {
 		// On the main thread, like a registered service's startup: it registers

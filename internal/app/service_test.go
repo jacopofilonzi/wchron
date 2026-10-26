@@ -196,7 +196,7 @@ func TestReadSheets(t *testing.T) {
 	if _, err := svc.ReadSheets(`C:\x.xlsx`); apperr.As(err).Code != apperr.Internal {
 		t.Fatalf("no reader: %v", err)
 	}
-	svc.SetSheetReader(xlsxsnapshot.ReadSheets)
+	SetSheetReader(svc, xlsxsnapshot.ReadSheets)
 	dir := t.TempDir()
 	wb := excelize.NewFile()
 	for _, n := range []string{"Vendite", "Riepilogo"} {

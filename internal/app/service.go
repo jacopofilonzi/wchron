@@ -84,8 +84,9 @@ type Service struct {
 	sheets func(path string) ([]string, error)
 }
 
-// SetSheetReader sets the function behind ReadSheets.
-func (s *Service) SetSheetReader(fn func(path string) ([]string, error)) { s.sheets = fn }
+// SetSheetReader sets the function behind s.ReadSheets. A plain function, not a
+// method: every exported method of Service becomes a binding.
+func SetSheetReader(s *Service, fn func(path string) ([]string, error)) { s.sheets = fn }
 
 // ReadSheets resolves a file pattern now (tokens rendered for now, in the
 // current language; a wildcard takes the newest match) and returns the
