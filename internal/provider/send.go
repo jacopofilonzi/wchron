@@ -101,8 +101,9 @@ func (m *Manager) Send(ctx context.Context, id string, target json.RawMessage, m
 	m.mu.Lock()
 	mc, err := m.get(id)
 	var ch Channel
+	connected := false
 	if err == nil {
-		ch = mc.ch
+		ch, connected = mc.ch, mc.status.State == StateConnected
 	}
 	m.mu.Unlock()
 	if err != nil {
@@ -110,6 +111,11 @@ func (m *Manager) Send(ctx context.Context, id string, target json.RawMessage, m
 	}
 	if ch == nil {
 		return apperr.New(apperr.SendNotConnected, errors.New("channel not open"))
+	}
+	// The channel dropped since the run started (or during the pause): fail
+	// this file at once instead of waiting for the provider's own timeout.
+	if !connected {
+		return apperr.New(apperr.SendNotConnected, errors.New("channel not connected at send time"))
 	}
 	err = ch.Send(ctx, target, msg)
 	l.lastEnd = m.o.Clock.Now()

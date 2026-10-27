@@ -518,3 +518,32 @@ func TestExcelValuesOnly(t *testing.T) {
 	}
 	e.assertTempEmpty()
 }
+
+// A channel that drops in the middle of a run: its remaining files fail at
+// once (send.not_connected), the other channel's recipient gets everything,
+// and the run reports the problems (partial).
+func TestChannelDroppingMidRun(t *testing.T) {
+	e := newEnv(t, config.Config{Channels: []config.Channel{chn("a"), chn("b")}})
+	f1, f2 := e.file("one.pdf", "1"), e.file("two.pdf", "2")
+	e.store.cfg.Schedules = []config.Schedule{{ID: "s", Name: "Sales", Enabled: true,
+		Files:      []config.FileSpec{spec("1", f1), spec("2", f2)},
+		Recipients: []config.Recipient{rcp("A", "a", config.VerifiedYes), rcp("B", "b", config.VerifiedYes)}}}
+	a := e.fp.Channel("a")
+	a.Edit(func(c *fake.Channel) {
+		c.OnSend = func(json.RawMessage, provider.Message) error {
+			a.SetStatus(provider.Status{State: provider.StateDisconnected, Retry: true, Account: fake.Account})
+			return apperr.New(apperr.SendFailed, errors.New("connection lost"))
+		}
+	})
+	res := e.run("s")
+	if res.Status != state.ResultPartial || codes(res.Problems) != "send.failed,send.not_connected" {
+		t.Fatalf("result %s %s", res.Status, codes(res.Problems))
+	}
+	if got := e.sends("a"); len(got) != 1 {
+		t.Fatalf("after the drop nothing more reaches the provider: %v", got)
+	}
+	if got := e.sends("b"); len(got) != 2 {
+		t.Fatalf("the other channel gets every file: %v", got)
+	}
+	e.assertTempEmpty()
+}
