@@ -7,10 +7,10 @@ Telegram/ntfy possible later without structural changes. One Go process holds th
 pipeline, channels, state); the Svelte GUI in a Wails window talks to it through generated bindings and events.
 
 > Status: milestones 1 (skeleton), 2 (data, logging), 3 (tokens), 4 (scheduler), 5 (providers, WhatsApp),
-> 6 (pipeline, resolver, passthrough, notifications), 7 (values-only Excel processor, send names) and 8 (GUI:
-> schedules list and editor, recipients, previews, status and log, error recipients, e2e) are in place; the
-> rest of this file is the planned layout.
-> Packages and files that exist today are marked **(m1)** … **(m8)**. Update this file as each milestone lands.
+> 6 (pipeline, resolver, passthrough, notifications), 7 (values-only Excel processor, send names), 8 (GUI:
+> schedules list and editor, recipients, previews, status and log, error recipients, e2e) and 9 (hardening:
+> resume, installer, release workflow) are in place; the rest of this file is the planned layout.
+> Packages and files that exist today are marked **(m1)** … **(m9)**. Update this file as each milestone lands.
 
 ## Milestones
 
@@ -31,7 +31,10 @@ pipeline, channels, state); the Svelte GUI in a Wails window talks to it through
 - [x] 8. GUI screens: schedules list and editor (cadence, recipients with the provider's picker, caption,
       files with previews, Excel options, send names numbered for "all"), status and log, error recipients,
       data folder; schedule bindings with field-addressed validation; Playwright e2e on a fake backend.
-- [ ] 9. Hardening: reconnection, installer, release workflow (log rotation landed with milestone 2).
+- [x] 9. Hardening: reconnect and scheduler wake on resume from sleep, connect/pairing race fixed, race-free
+      startup logger, autostart on the first run, edge-case tests (no network, channel dropping mid-run,
+      hand-edited config, write failures), installer (Start menu, uninstall removes all data, upgrades never
+      do), release workflow on `v*` tags, `make release-check`, i18n usage test.
 - [ ] 10. Update notification and self-update.
 
 ```text
@@ -46,15 +49,22 @@ wchron/
 │                       ApplicationStarted: toasts (main thread), temp cleanup, scheduler, channels;
 │                       (m7) xlsxsnapshot registered next to passthrough, its ReadSheets given to the service;
 │                       (m8) app.Configure: processors, data/backups dirs, the schedule-change hook (scheduler
-│                       Reload + schedules:changed, also after a channel delete), platform.OpenFolder
+│                       Reload + schedules:changed, also after a channel delete), platform.OpenFolder;
+│                       (m9) one logger on a logging.Switch (stderr, then the log file), autostart on the
+│                       first run (startup.AutostartOnFirstRun), SystemDidWake → chans.Resume + sched.Wake
 ├── internal/           Go (go.mod: 1.26, toolchain 1.27) — core and platform layer (see below)
-├── locales/            it.json, en.json (shared i18n catalog, flat namespaced keys) + embed.go (m1)
+├── locales/            it.json, en.json (shared i18n catalog, flat namespaced keys) + embed.go (m1);
+│                       (m9) usage_test.go: unused keys, Go literal keys missing
 ├── frontend/           Svelte 5 + TS + Vite + Tailwind 4 — GUI
 ├── build/              Wails build assets (m1): config.yml, Taskfile.yml (frontend, bindings), appicon.png
 │                       (1024 px logo), windows/ (Taskfile.yml, icon.ico, wails.exe.manifest, info.json, nsis/
-│                       per-user installer). icon.ico and appicon.png are written by `make icons`
+│                       per-user installer). icon.ico and appicon.png are written by `make icons`;
+│                       (m9) windows/nsis/project.nsi: Start menu shortcut, closes the app before (un)install,
+│                       uninstall removes all data + Run value + toast registration, final page with the
+│                       WhatsApp note; nsis_test.go: only the uninstall section deletes (upgrades keep data)
 ├── scripts/            set-version.mjs (m1)
-├── .github/workflows/  release.yml (on a v* tag only: build + release)
+├── .github/workflows/  (m9) release.yml (on a v* tag push only: tag = version check, Linux cross-compile,
+│                       NSIS installer, .sha256, GitHub release with notes from feat/fix commits; no checks)
 ├── update.config.json  build-time update settings, embedded in the binary
 ├── Taskfile.yml        Wails tasks (build, package, run, dev), wrapped by the Makefile (m1)
 ├── .env.example        dev-only overrides; `.env` is git-ignored
@@ -84,10 +94,12 @@ internal/
 ├── migrate/        (m2) shared migration framework: append-only steps on the raw JSON, schema_version
 ├── fsutil/         (m2) atomic write (temp + fsync + rename), file/tree copy
 ├── backup/         (m2) Needed (when), Create (copy to backups/), Prune (keep the 10 most recent); (m8) Latest
-├── startup/        (m2) Open: load → backup → quarantine → save migrated files → last_app_version; FatalText
+├── startup/        (m2) Open: load → backup → quarantine → save migrated files → last_app_version; FatalText;
+│                   (m9) Data.FirstRun (no config.json nor state.json), AutostartOnFirstRun (not dev, no data dir override)
 ├── devenv/         (m2) reads the dev-only env overrides (devenv.invalid on a bad value)
 ├── logging/        (m2) slog: JSON lines in logs/wchron.log (lumberjack: 5 MB × 5 files) + stderr text in
-│                   dev builds; Read (newest first across rotated files, level filter); MaskPhone
+│                   dev builds; Read (newest first across rotated files, level filter); MaskPhone; (m9)
+│                   Switch: a slog.Handler whose destination is replaced while in use (startup logger)
 ├── i18n/           (m1) T(lang, key, params) over the locales catalog
 ├── logo/           logo geometry (package doc) → Draw(size) (SDF, anti-aliased), SDF helpers shared with
 │   │               the tray, EncodeICO (PNG-compressed entries), SVG (vector copy); tests check that the
@@ -120,15 +132,19 @@ internal/
 │   │               Capabilities, Field schemas, Message; registry.go: Registry, Info; manager.go: Manager (open
 │   │               enabled channels, connect, backoff reconnect 5 s→5 min, pairing, logout, rename, create,
 │   │               delete + recipient cleanup, Usage, ValidateTarget, ListTargets, pending recipient checks on
-│   │               connect, OnOutdated hook), ConfigStore, ErrTargetInvalid. Design in the package doc
+│   │               connect, OnOutdated hook), ConfigStore, ErrTargetInvalid. Design in the package doc;
+│   │               (m9) connection attempts and pairing starts serialized per channel, Resume (after sleep:
+│   │               reconnect now, backoff reset)
 │   │               (m6) send.go: Manager.Send (one send at a time per channel, 2–5 s pause between two,
-│   │               cancellable), SendInfo, VerifyRecipient (check right before a send, stored in config)
+│   │               cancellable), SendInfo, VerifyRecipient (check right before a send, stored in config);
+│   │               (m9) a channel that dropped fails the send at once (send.not_connected)
 │   ├── whatsapp/   (m5) whatsmeow linked device (doc.go: design): provider.go (capabilities, schemas, Open),
 │   │   │           channel.go (status from events, pairing, logout, targets), send.go (documents, 100 MB,
 │   │   │           one retry), target.go (E.164 / group JID), client.go (waClient interface), real.go
 │   │   │           (whatsmeow adapter), session.go (session.db, corrupt → set aside), log.go (slog, masked)
 │   │   └── smoke/  (m5) `make smoke`: read-only live check of the paired dev channels
-│   └── fake/       (m5) in-memory provider: scriptable status, pairing, failures; records sends; (m6) OnSend hook
+│   └── fake/       (m5) in-memory provider: scriptable status, pairing, failures; records sends; (m6) OnSend hook;
+│                   (m9) OnConnect hook (holds a connection attempt in flight)
 ├── pipeline/       (m6) one run (scheduler.Runner): resolve + process every file once, slot.late before the first
 │                   send, each recipient all files in order (channels in parallel), captions, capability and
 │                   recipient checks, result ok | partial | failed | skipped, report to notify, temp cleanup,
@@ -149,7 +165,8 @@ internal/
                     OpenShared (read, sharing read/write/delete), IsLocked, OpenExclusive (tests); (m8)
                     OpenFolder (Explorer); later
                     Protect/Unprotect (DPAPI, for channel secrets: with the first provider that has one).
-                    Single instance is Wails' SingleInstance option (in main.go).
+                    Single instance is Wails' SingleInstance option (in main.go). Resume from sleep is
+                    Wails' events.Common.SystemDidWake (WM_POWERBROADCAST), no platform code (m9).
 ```
 
 ### Bindings (`internal/app`)
@@ -231,7 +248,7 @@ All under the data dir (default `%APPDATA%\wchron`, override `WCHRON_DATA_DIR`; 
 
 | Path | Content |
 | --- | --- |
-| `config.json` | `schema_version`, `settings`, `channels[]`, `schedules[]` (fields below); written on the first change, not at the first start |
+| `config.json` | `schema_version`, `settings`, `channels[]`, `schedules[]` (fields below); written on the first change, not at the first start (the first start is detected by neither file existing) |
 | `state.json` | `schema_version`, `routine_active`, `last_app_version`, `notified_update_version`, per schedule: last fired slot, last result, last error, problems, notification memory |
 | `state.json.corrupt-<YYYYMMDD-HHMMSS>` | an unreadable `state.json` moved aside at startup (`state.read_failed`); never deleted by the app |
 | `channels/<id>/` | per-channel data (m5): WhatsApp `session.db` (whatsmeow sqlstore, `modernc.org/sqlite`; never logged); an unreadable one is renamed `session.db.corrupt-<YYYYMMDD-HHMMSS>` (never deleted by the app). Later: DPAPI-encrypted secrets of other providers. Created with the channel, deleted with it |
@@ -346,7 +363,7 @@ Routing is a minimal hash router (`#/schedules`, `#/schedules/<id>` or `/new` fo
 | `components/Toggle.svelte` | (m1) switch: `<button aria-pressed>` |
 | `components/Icon.svelte` | (m1) inline stroke icons of the nav; (m8) copy, trash, up, down, close, folder |
 | `components/EmptyPage.svelte` | (m1) placeholder page: title + empty-state card |
-| `pages/Schedules.svelte` | (m8) list (enable toggle saving at once, when/recipients summary, next run, last result with the first problem; duplicate, delete with confirmation; empty states: no channel → Channels, no schedule → new); under `#/schedules/<id>` it renders the editor |
+| `pages/Schedules.svelte` | (m8) list (cells wrap with the full text in a tooltip, m9; enable toggle saving at once, when/recipients summary, next run, last result with the first problem; duplicate, delete with confirmation; empty states: no channel → Channels, no schedule → new); under `#/schedules/<id>` it renders the editor |
 | `pages/ScheduleEditor.svelte` | (m8) the editor: draft until Save (`saveSchedule`, problems under their fields), unsaved-changes guard (router), name, cadence, recipients, caption preview, files (reorder with arrows), next 5 runs, active, send now (saved only, confirmation), delete |
 | `components/editor/CadenceEditor.svelte` | (m8) interval / fixed times, anchor, time range (overnight hint), days with Weekdays / All |
 | `components/editor/FileSpecCard.svelte` | (m8) one file spec: path + `previewFiles`, match mode, processor (filtered by extension) and its schema options (list → chips with token previews; `sheets` → read from the file), own caption, send name + `previewSendName` |
@@ -386,5 +403,6 @@ Routing is a minimal hash router (`#/schedules`, `#/schedules/<id>` or `/new` fo
 | `make smoke` | opt-in, read-only live check: connects the paired WhatsApp channels of `WCHRON_DATA_DIR` (required), prints status and group count, disconnects; never sends. Stop `make dev` first |
 | `make check` | bindings, vet, test, `svelte-check --fail-on-warnings`, frontend build: must be 0 errors, 0 warnings |
 | `make e2e` | bindings + Playwright UI tests against the fake backend (no Wails, no disk); required before a release |
+| `make release-check` | (m9) `make check`, `make e2e`, `make package` in this order: run it before tagging a release |
 | `make version V=x.y.z` | `scripts/set-version.mjs` |
 | `make clean` | remove `bin/`, `frontend/dist`, `.task/` |

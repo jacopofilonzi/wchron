@@ -88,7 +88,11 @@ infeasible (e.g. a Wails 3 tray limitation), propose the alternative and ask bef
   - connecting a channel at all (the app does it at startup for every enabled channel) and `make smoke`
     (read-only: connects the paired dev channels of `WCHRON_DATA_DIR`, lists the groups; never sends);
   - the update check/download (reads GitHub releases) and the installer it launches;
-  - autostart (writes the user's `Run` registry key) and keep-awake (`SetThreadExecutionState`).
+  - autostart (writes the user's `Run` registry key; also turned on by itself at the very first start of
+    an installed copy, never in dev builds or with `WCHRON_DATA_DIR` set) and keep-awake
+    (`SetThreadExecutionState`);
+  - the installer and the uninstaller (`make package` only builds them: never run them on the dev
+    machine; the uninstaller deletes `%APPDATA%\wchron`, i.e. the real data, and the toast registration).
 - **Development never uses production credentials or services**: dev runs use their own data dir, so their
   own channels (WhatsApp paired with a test number, test bots/topics later), never the channels of the
   installed app. Test recipients are numbers/groups/chats you own.
@@ -154,9 +158,17 @@ i18n lives in one shared catalog used by both Go and the frontend.
   `internal/startup`) and refuses to start (`storage.backup_failed`) if the backup fails. The backup runs
   at startup before any channel or database is opened, so it is a plain file copy (SQLite `session.db`
   together with its `-wal`/`-shm` files); never move it after the channels are opened. The 10 most recent
-  backups are kept (app-generated copies, not user data). A file with a
+  backups are kept (app-generated copies, not user data). **`config.json` and `state.json` v1 are
+  released** (`main` was pushed with 0.8.0): from now on any change to their format, even adding a field
+  that old files lack, is an appended migration step with a test from a realistic v1 file. A file with a
   `schema_version` newer than the app is never overwritten (`config.newer_version`). Anything the user must
   do before updating goes in the README upgrade notes.
+- **Upgrades never delete data; only the explicit uninstall does.** Installing over an existing install
+  (by hand, or silently with `/S` as the self-update will) only overwrites the program files: the NSIS
+  install section and `.onInit` never run the uninstaller and never remove anything outside the program.
+  The user's data (`%APPDATA%\wchron`, `%TEMP%\wchron`, the Run value, the toast registration under
+  `HKCU\Software\Classes`) is removed only by `Section "uninstall"` in `build/windows/nsis/project.nsi`.
+  `build/windows/nsis/nsis_test.go` fails if anything outside that section deletes or runs the uninstaller.
 - Writes to `config.json` and `state.json` are atomic (`fsutil.WriteAtomic`: temp file in the same dir +
   fsync + rename). An unreadable `config.json` is never overwritten (the app doesn't start); an unreadable
   `state.json` is moved aside as `state.json.corrupt-<timestamp>`, never deleted.
@@ -260,10 +272,16 @@ i18n lives in one shared catalog used by both Go and the frontend.
   that the old version is left nowhere.
 - Every completed feature or fix ends with `make version` and a `chore: version x.y.z` commit. Tags and
   releases only when I ask.
-- CI (`.github/workflows/release.yml`) runs only on a `vX.Y.Z` tag push, never on a plain push and no
-  manual trigger. It doesn't run the checks: `make check` must pass locally before pushing the tag. It
-  only verifies that the tag matches `build/config.yml`, builds the per-user NSIS installer and creates the
-  GitHub release with the installer and its `.sha256` attached.
+- **Before tagging a release run `make release-check`** (`make check`, `make e2e`, `make package`, in this
+  order): all three must pass. Tags and pushes only when I ask.
+- CI (`.github/workflows/release.yml`) runs only on a `vX.Y.Z` tag push, never on a plain push or a pull
+  request, and has no manual trigger. It doesn't run the checks (they run locally, above). On Ubuntu it
+  verifies that the tag matches `build/config.yml` and that the asset names are those of
+  `update.config.json`, installs Go (from `go.mod`), Node 22, the `wails3` CLI at `go.mod`'s Wails version
+  and NSIS, then `npm ci` and `wails3 task package GOOS=windows ARCH=amd64` (CGO off: the same Taskfile as
+  `make package`), writes `wchron-amd64-installer.exe.sha256` (`sha256sum` format: `<hex>  <file>`) and
+  creates the GitHub release with both files and notes from the `feat`/`fix` commits since the previous
+  tag (so `chore: version` is left out).
 - `make package` puts the exe and the installer side by side in `bin/` (`wchron.exe`,
   `wchron-amd64-installer.exe`). The installer is per-user only (`$LOCALAPPDATA\Programs\wchron`, no UAC),
   never system-wide.
@@ -351,7 +369,9 @@ i18n lives in one shared catalog used by both Go and the frontend.
 - Wails single instance: `application.New` exits a second launch right away (after notifying the first),
   so nothing with side effects may run before it in `main.go`. That is why the data dir, the log file and
   `startup.Open` run after it, the service is added with `wails.RegisterService` (the bindings generator
-  finds any `application.NewService` call) and the file logger replaces the stderr one via `wails.Logger`.
+  finds any `application.NewService` call) and the log file is attached later: the one logger main creates
+  (given to Wails and to the second-instance callback, which run on other goroutines) sits on a
+  `logging.Switch`, pointed at the file with `Set`. Never reassign a logger variable after `application.New`.
 - Migration steps see the raw JSON with numbers as `json.Number` (`internal/migrate` decodes with
   `UseNumber`, so large ids stay exact), not `float64`.
 - Release builds use the `production` tag (`version.Dev` false): no stderr logging, `-H windowsgui`.
@@ -403,3 +423,15 @@ i18n lives in one shared catalog used by both Go and the frontend.
   every line).
 - On Windows the channel's `session.db` must be closed (`Channel.Close`) before `channels/<id>/` can be
   deleted: the manager closes first, then removes the dir.
+- Resume from sleep: Wails maps `WM_POWERBROADCAST`/`PBT_APMRESUMEAUTOMATIC` to `events.Common.SystemDidWake`
+  (no platform code needed); it can arrive twice (one per top-level window), so its handler
+  (`Manager.Resume` + `Scheduler.Wake`) must stay idempotent.
+- `provider.Manager` serializes per channel a connection attempt and the start of a pairing (`connMu`):
+  a `Connect` still running when a pairing succeeds would report "not paired" over it (it made
+  `TestChannelBindings` flaky). Take `connMu` before `m.mu`, never while holding it.
+- Tests wait on events (a `Store.Subscribe` channel, the fake's hooks), with a deadline only as a failure
+  guard; never a sleep used as synchronization.
+- The NSIS script runs on Windows (`make package`) and on Linux (the release workflow): paths passed by the
+  Taskfile switch separator on `OS`; `.syso` cleanup has a `rm -f` variant for Linux.
+- `locales/usage_test.go` fails on a catalog key nothing uses or a Go `i18n.T` literal key that doesn't
+  exist; keys built from a prefix are listed in its `dynamicPrefixes`.
