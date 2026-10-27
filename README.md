@@ -8,13 +8,13 @@ report, found by a name with the date in it), optionally turns an Excel workbook
 with just the sheets you choose, and sends it to one or more recipients, for example as a document through your WhatsApp account,
 linked like WhatsApp Web. You can connect several accounts (channels), also of the same service.
 
-> **Status: under development.** Channels, schedules, files, Excel processing and the status page work;
-> the hardening for release and the automatic updates (described below) are still to come.
+> **⚠ Risk: unofficial client.** wchron uses [whatsmeow](https://github.com/tulir/whatsmeow), an
+> unofficial WhatsApp client. **Using it goes against WhatsApp's terms of service, and your account could be
+> restricted or banned.** wchron is meant for low volume (one file per hour or less) to recipients who
+> expect it. Try it first with a secondary number. Use it at your own risk.
 
-> **Risk: unofficial client.** wchron uses [whatsmeow](https://github.com/tulir/whatsmeow), an
-> unofficial WhatsApp client. Using it goes against WhatsApp's terms of service, and the account could in
-> theory be restricted. wchron is meant for low volume (one file per hour or less) to recipients who
-> expect it. Use it at your own risk.
+> **Status: beta.** Everything below works; the in-app update notification is still to come (see
+> [Updates](#updates)).
 
 ## What it does and doesn't do
 
@@ -27,13 +27,26 @@ linked like WhatsApp Web. You can connect several accounts (channels), also of t
 
 ## Install
 
-Download `wchron-amd64-installer.exe` from the latest [release](https://github.com/jacopofilonzi/wchron/releases)
-and run it. It installs for the current user only (`%LOCALAPPDATA%\Programs\wchron`), without
-administrator rights. wchron starts at login, minimized to the tray; launching it again just opens the
-window.
+1. Download `wchron-amd64-installer.exe` from the latest
+   [release](https://github.com/jacopofilonzi/wchron/releases) (the `.sha256` file next to it is its
+   checksum).
+2. Run it. The installer is not signed, so Windows SmartScreen may say "Windows protected your PC": click
+   **More info**, then **Run anyway**.
+3. It installs for the current user only (`%LOCALAPPDATA%\Programs\wchron`), without administrator rights,
+   and adds wchron to the Start menu. If wchron is running, the installer asks to close it first.
 
-On first start, open **Channels** in the window, add a WhatsApp channel and scan the QR code from your phone
-(Settings → Linked devices → Link a device).
+### First start
+
+- wchron opens its window and puts its icon in the system tray (near the clock; it may be in the hidden
+  icons, behind the arrow). Closing the window keeps it running in the tray; **Quit** is in the tray menu.
+- On the very first start wchron turns on **Start with Windows**, so it starts at login, minimized to the
+  tray. You can turn it off in **Settings**. Launching it again while it runs just opens the window.
+- Then:
+  1. **Channels → Add channel**: choose WhatsApp and a name, then scan the QR code from your phone
+     (WhatsApp → Settings → Linked devices → Link a device). See [Channels](#channels).
+  2. **Schedules → New schedule**: name, when, recipients, files; **Save**. See [Schedules](#schedules).
+  3. Optionally, **Settings → Error recipients**: who gets a message when a send fails (for example your
+     own number). See [When something goes wrong](#when-something-goes-wrong).
 
 ## Channels
 
@@ -55,7 +68,8 @@ with their state (connected, connecting, not connected, not paired, logged out, 
   if it isn't, remove "wchron" by hand from the phone's Linked devices.
 
 A channel that loses the connection reconnects by itself (after 5 seconds, then waiting longer each
-time, up to 5 minutes). It doesn't when the phone removed the linked device (pair it again), when
+time, up to 5 minutes), and at once when the PC wakes up from sleep or hibernation. With no network at
+startup wchron starts anyway and keeps trying. It doesn't when the phone removed the linked device (pair it again), when
 WhatsApp rejects the app version (update wchron), when the same session was opened by another copy of
 wchron, or after a temporary block from WhatsApp (restart wchron later).
 
@@ -315,18 +329,27 @@ the Status page.
 
 ## Updates
 
-wchron checks for a new release at startup, and also when a channel such as WhatsApp rejects the connection (an update may
-be needed). It only notifies you: nothing is installed until you click **Update**. Then it downloads the
-installer, waits until no send is in progress and the next one is at least 10 minutes away, closes,
-updates and restarts by itself.
+**Today:** to update, download the installer of the new release and run it, like the first install: it
+closes wchron, replaces the program and keeps all your data. You can watch the
+[releases page](https://github.com/jacopofilonzi/wchron/releases) (GitHub: Watch → Custom → Releases) to
+hear about new versions.
 
-Before starting a new version, wchron backs up your data (`%APPDATA%\wchron\backups\`, one folder per
-upgrade named after the date and the previous version; the 10 most recent are kept); if the backup
-fails, it doesn't start. Your schedules, settings and channels (including the WhatsApp link) are kept across updates.
+**Coming in a next version:** wchron will check for a new release at startup, and also when a channel such
+as WhatsApp rejects the connection (an update may be needed). It will only notify you: nothing is installed
+until you click **Update**. Then it downloads the installer, waits until no send is in progress and the
+next one is at least 10 minutes away, closes, updates and restarts by itself.
+
+Installing a new version never deletes your data. Before starting a new version, wchron backs it up
+(`%APPDATA%\wchron\backups\`, one folder per upgrade named after the date and the previous version; the
+10 most recent are kept); if the backup fails, it doesn't start. Your schedules, settings and channels
+(including the WhatsApp link) are kept across updates.
 
 ### Upgrade notes
 
-None yet. Anything you need to do before installing a specific version will be listed here.
+Read this before installing a new version: anything you need to do first is listed here, newest first.
+
+- **0.9.0:** nothing to do. Installers before 0.9.0 created a desktop shortcut; new installs don't, and an
+  existing one is left as it is.
 
 ## Your data
 
@@ -339,6 +362,18 @@ If wchron can't read `config.json` (for example after a hand edit), or the file 
 version, it shows an error and doesn't start, leaving the file as it is: fix it, restore it from
 `backups\` or install the newer version. If `state.json` is damaged, wchron starts anyway with the
 last-run information reset, and keeps the damaged file next to it as `state.json.corrupt-<date>`.
+
+## Uninstall
+
+**Uninstalling removes wchron and all its data** for your Windows user: schedules, channels and their
+sessions, settings, logs and backups (`%APPDATA%\wchron`), the temporary copies (`%TEMP%\wchron`), the
+start at login and the notification registration. To keep a copy, save the `%APPDATA%\wchron` folder first.
+
+1. **Delete your channels in the app first** (**Channels → Delete**): for a connected WhatsApp channel this
+   also removes the linked device "wchron" from your phone. The uninstaller can't do it: without this step
+   the linked device stays on the phone until you remove it there (WhatsApp → Settings → Linked devices).
+2. Windows **Settings → Apps → Installed apps → wchron → Uninstall** (or run `uninstall.exe` in
+   `%LOCALAPPDATA%\Programs\wchron`). If wchron is running, it is closed first.
 
 ## Development
 
