@@ -415,3 +415,45 @@ func TestRunHistory(t *testing.T) {
 		t.Fatalf("limit %d", len(got))
 	}
 }
+
+// Disk full (or any write error) on save: the binding returns
+// config.write_failed, nothing changes in memory and config.json keeps its
+// previous content (atomic write: temp file + rename).
+func TestSaveScheduleWriteFailure(t *testing.T) {
+	e := newSchedEnv(t)
+	path := filepath.Join(t.TempDir(), "config.json")
+	fail := false
+	e.st.d.SaveConfig = func(c config.Config) error {
+		if fail {
+			return apperr.New(apperr.ConfigWriteFailed, errors.New("write: There is not enough space on the disk.")).With("path", path)
+		}
+		return config.Save(path, c)
+	}
+	sc := e.valid(t)
+	res, err := e.svc.SaveSchedule(sc)
+	if err != nil || res.Schedule == nil {
+		t.Fatalf("first save: %+v %v", res, err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fail = true
+	changed := *res.Schedule
+	changed.Name = "Renamed"
+	if _, err := e.svc.SaveSchedule(changed); apperr.As(err).Code != apperr.ConfigWriteFailed {
+		t.Fatalf("err %v", err)
+	}
+	if _, err := e.svc.SaveSchedule(e.valid(t)); apperr.As(err).Code != apperr.ConfigWriteFailed {
+		t.Fatalf("new: err %v", err)
+	}
+	if list := e.svc.ListSchedules(); len(list) != 1 || list[0].Schedule.Name != "Sales" {
+		t.Fatalf("memory changed: %+v", list)
+	}
+	if after, _ := os.ReadFile(path); string(after) != string(before) {
+		t.Fatal("config.json changed")
+	}
+	if l, err := config.Load(path); err != nil || len(l.Config.Schedules) != 1 {
+		t.Fatalf("config.json still loads: %v", err)
+	}
+}

@@ -579,3 +579,20 @@ func TestResumeReconnectsAtOnceWithTheBackoffReset(t *testing.T) {
 		t.Fatalf("after resume the backoff restarts at 5s, got %v", d)
 	}
 }
+
+// No network at startup: the channel waits for the backoff (no error dialog,
+// nothing fatal) and connects when the network is back.
+func TestNoNetworkAtStartup(t *testing.T) {
+	e := newEnv(t, config.Config{Channels: []config.Channel{ch("a")}})
+	e.p.OnOpen = func(c *fake.Channel) { c.ConnectErr = errors.New("dial tcp: no route to host") }
+	e.m.Start()
+	waitFor(t, "a retry", func() bool { return len(e.timers.Delays()) == 1 })
+	l := e.m.List()
+	if l[0].Status.State != provider.StateDisconnected || l[0].Status.Error == nil ||
+		l[0].Status.Error.Code != apperr.ChannelDisconnected || e.timers.Delays()[0] != provider.BackoffMin {
+		t.Fatalf("offline at startup: %+v %v", l, e.timers.Delays())
+	}
+	e.p.Channel("a").Edit(func(c *fake.Channel) { c.ConnectErr = nil })
+	e.timers.fire()
+	waitFor(t, "connected", func() bool { return e.state("a") == provider.StateConnected })
+}

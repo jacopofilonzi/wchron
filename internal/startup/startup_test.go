@@ -173,3 +173,43 @@ func TestNewerConfigIsFatalAndUntouched(t *testing.T) {
 		t.Fatalf("dialog %q %q", title, msg)
 	}
 }
+
+// A config.json edited by hand with values that are wrong but structurally
+// valid (a bad cadence, an unknown processor, a recipient on a missing
+// channel) still starts: the scheduler ignores that schedule with a warning
+// (internal/scheduler), the run skips the rest (internal/pipeline), and the
+// file is never rewritten. Only structural damage (unknown enum, duplicate
+// id, not JSON) stops the start, leaving the file as it is.
+func TestHandEditedBadScheduleStillStarts(t *testing.T) {
+	p := newPaths(t)
+	cfg := `{"schema_version": 1, "settings": {"language": "it", "theme": "system"},
+  "channels": [{"id": "wa", "provider": "whatsapp", "name": "Phone", "enabled": true, "settings": {}}],
+  "schedules": [
+    {"id": "good", "name": "Good", "enabled": true,
+     "cadence": {"mode": "fixed", "times": ["09:00"], "days": ["mon"]},
+     "recipients": [{"id": "r", "channel_id": "wa", "target": {"kind": "number", "number": "+390000000001"}, "verified": "yes"}],
+     "files": [{"id": "f", "path_pattern": "C:/Reports/a.pdf", "match": "error", "processor": "passthrough"}]},
+    {"id": "bad", "name": "Bad", "enabled": true,
+     "cadence": {"mode": "interval", "interval": {"hours": 0, "minutes": 0}, "anchor": "25:99", "times": ["99:99"], "days": []},
+     "recipients": [{"id": "r", "channel_id": "gone", "target": {}, "verified": "unknown"}],
+     "files": [{"id": "f", "path_pattern": "relative/x.pdf", "match": "all", "processor": "nope", "processor_options": {"x": 1}}]}
+  ]}`
+	put(t, p.ConfigFile(), cfg)
+	put(t, p.StateFile(), `{"schema_version": 1, "last_app_version": "0.2.0"}`)
+	d, err := open(p, "0.2.0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(d.Config.Schedules) != 2 || d.Config.Schedules[1].ID != "bad" || d.FirstRun {
+		t.Fatalf("%+v", d.Config.Schedules)
+	}
+	if read(t, p.ConfigFile()) != cfg {
+		t.Fatal("config.json must not be rewritten")
+	}
+	// Structural damage: the start stops, the file stays as it is.
+	broken := strings.Replace(cfg, `"match": "all"`, `"match": "sometimes"`, 1)
+	put(t, p.ConfigFile(), broken)
+	if _, err := open(p, "0.2.0"); err == nil || read(t, p.ConfigFile()) != broken {
+		t.Fatalf("structural damage must stop the start: %v", err)
+	}
+}
