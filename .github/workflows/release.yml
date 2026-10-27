@@ -1,0 +1,97 @@
+# Release: only when a v* tag is pushed (no manual runs, nothing on plain pushes or pull requests).
+# Windows build cross-compiled on Linux (Wails on Windows needs no cgo), per-user NSIS installer,
+# GitHub release with the installer and its checksum. No checks or tests here: `make release-check`
+# runs them locally before the tag is pushed (AGENTS.md "Versions and releases").
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      CGO_ENABLED: '0'
+      # Asset names: they must match update.config.json (assets.windows_amd64).
+      INSTALLER: wchron-amd64-installer.exe
+      CHECKSUM: wchron-amd64-installer.exe.sha256
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # the previous tag, for the notes
+
+      - name: Tag matches the app version and the update settings
+        run: |
+          app=$(grep -E '^\s+version:\s*"' build/config.yml | head -1 | sed -E 's/.*"([^"]+)".*/\1/')
+          if [ "v$app" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::the tag is $GITHUB_REF_NAME but build/config.yml says $app"
+            exit 1
+          fi
+          for name in "$INSTALLER" "$CHECKSUM"; do
+            if ! grep -q "\"$name\"" update.config.json; then
+              echo "::error::$name is not the asset name in update.config.json"
+              exit 1
+            fi
+          done
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Wails CLI (same version as go.mod)
+        run: |
+          v=$(go list -m -f '{{.Version}}' github.com/wailsapp/wails/v3)
+          go install "github.com/wailsapp/wails/v3/cmd/wails3@$v"
+
+      - name: NSIS
+        run: sudo apt-get update -q && sudo apt-get install -y -q nsis
+
+      - name: Frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      # The package task builds the bindings, the frontend and the exe (production tag), then the
+      # installer: the same Taskfile as `make package` on Windows.
+      - name: Installer
+        env:
+          GOOS: windows
+        run: wails3 task package GOOS=windows ARCH=amd64 MAKENSIS=makensis
+
+      - name: Checksum
+        working-directory: bin
+        # sha256sum format: "<64 hex>  <file name>".
+        run: sha256sum "$INSTALLER" > "$CHECKSUM" && cat "$CHECKSUM"
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prev=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
+          range=${prev:+$prev..}$GITHUB_REF_NAME
+          feats=$(git log "$range" --no-merges --pretty='%s' | grep -E '^feat(\(.+\))?!?: ' | sed -E 's/^/- /' || true)
+          fixes=$(git log "$range" --no-merges --pretty='%s' | grep -E '^fix(\(.+\))?!?: ' | sed -E 's/^/- /' || true)
+          {
+            if [ -n "$feats" ]; then printf '## New\n\n%s\n\n' "$feats"; fi
+            if [ -n "$fixes" ]; then printf '## Fixes\n\n%s\n\n' "$fixes"; fi
+            if [ -z "$feats$fixes" ]; then printf 'Maintenance release.\n\n'; fi
+            printf 'Install: download `%s` and run it (per user, no administrator rights). ' "$INSTALLER"
+            printf 'See the [README](https://github.com/%s#install).\n' "$GITHUB_REPOSITORY"
+          } > notes.md
+          cat notes.md
+          gh release create "$GITHUB_REF_NAME" "bin/$INSTALLER" "bin/$CHECKSUM" \
+            --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag

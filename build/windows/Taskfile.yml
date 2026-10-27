@@ -21,6 +21,9 @@ tasks:
       - go build {{.BUILD_FLAGS}} -o "{{.BIN_DIR}}/{{.APP_NAME}}.exe"
       - cmd: powershell -NoProfile -Command Remove-Item *.syso
         platforms: [windows]
+      # The release workflow cross-compiles on Linux.
+      - cmd: rm -f *.syso
+        platforms: [linux, darwin]
     vars:
       BUILD_FLAGS: '{{if eq .DEV "true"}}-buildvcs=false -gcflags=all="-l"{{else}}-tags production -trimpath -buildvcs=false -ldflags="-w -s -H windowsgui"{{end}}'
     env:
@@ -48,10 +51,12 @@ tasks:
       - task: build
     cmds:
       - wails3 generate webview2bootstrapper -dir "{{.ROOT_DIR}}/build/windows/nsis"
-      - '"{{.MAKENSIS}}" -DWAILS_INSTALL_SCOPE=user -DREQUEST_EXECUTION_LEVEL=user -DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.ROOT_DIR}}\{{.BIN_DIR}}\{{.APP_NAME}}.exe" project.nsi'
+      - '"{{.MAKENSIS}}" -DWAILS_INSTALL_SCOPE=user -DREQUEST_EXECUTION_LEVEL=user -DARG_WAILS_{{.ARG_FLAG}}_BINARY="{{.EXE}}" project.nsi'
     vars:
       ARCH: '{{.ARCH | default ARCH}}'
       ARG_FLAG: '{{if eq .ARCH "amd64"}}AMD64{{else}}ARM64{{end}}'
+      # Windows (make package) or Linux (the release workflow's cross-compile).
+      EXE: '{{if eq OS "windows"}}{{.ROOT_DIR}}\{{.BIN_DIR}}\{{.APP_NAME}}.exe{{else}}{{.ROOT_DIR}}/{{.BIN_DIR}}/{{.APP_NAME}}.exe{{end}}'
       # The Makefile passes the full path: NSIS is usually not in the PATH.
       MAKENSIS: '{{.MAKENSIS | default "makensis"}}'
 
