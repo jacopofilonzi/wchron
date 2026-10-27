@@ -64,7 +64,14 @@ ManifestDPIAware true
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${PRODUCT_EXECUTABLE}" # "Run wchron" checkbox on the last page
 !insertmacro MUI_PAGE_FINISH # Finished installation page.
 
+# Uninstall: confirm (says that all the data goes), progress, final page with the WhatsApp note.
+!define MUI_UNCONFIRMPAGE_TEXT_TOP "${INFO_PRODUCTNAME} will be removed together with ALL its data: schedules, channels and their sessions, settings, logs and backups ($APPDATA\${INFO_PRODUCTNAME}).$\r$\n$\r$\nTo keep them, cancel and copy that folder first."
+!insertmacro MUI_UNPAGE_CONFIRM
+!define MUI_UNFINISHPAGE_NOAUTOCLOSE
 !insertmacro MUI_UNPAGE_INSTFILES # Uninstalling page
+!define MUI_FINISHPAGE_TITLE "${INFO_PRODUCTNAME} has been removed"
+!define MUI_FINISHPAGE_TEXT "${INFO_PRODUCTNAME} and all its data have been removed from this computer.$\r$\n$\r$\nWhatsApp: the linked device $\"${INFO_PRODUCTNAME}$\" stays on your phone unless you deleted the channel in the app before uninstalling. Remove it from WhatsApp > Settings > Linked devices."
+!insertmacro MUI_UNPAGE_FINISH
 
 !insertmacro MUI_LANGUAGE "English" # Set the Language of the installer
 
@@ -120,39 +127,65 @@ Function un.onInit
    !insertmacro closeRunningApp
 FunctionEnd
 
+# DATA SAFETY (AGENTS.md invariant "Upgrades never delete data"): the install section below never
+# runs the uninstaller and never removes anything under the data dir; installing over an existing
+# install (by hand or the silent self-update with /S) only overwrites the program files. The user's
+# data is removed ONLY by the "uninstall" section (uninstall.exe, run explicitly). A Go test
+# (nsis_test.go) checks that the data paths appear nowhere else.
 Section
     !insertmacro wails.setShellContext
 
     !insertmacro wails.webview2runtime
 
     SetOutPath $INSTDIR
-    
+
     !insertmacro wails.files
 
+    # Start menu only: wchron lives in the tray and starts at login, so no desktop shortcut.
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
-    CreateShortCut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
 
     !insertmacro wails.associateFiles
     !insertmacro wails.associateCustomProtocols
-    
+
     !insertmacro wails.writeUninstaller
 SectionEnd
 
-Section "uninstall" 
+# Explicit uninstall: removes the program AND every trace of the app for this user.
+Section "uninstall"
     !insertmacro wails.setShellContext
 
-    RMDir /r "$AppData\${PRODUCT_EXECUTABLE}" # Remove the WebView2 DataPath
-    # The login start entry the app writes (Settings > Start with Windows).
-    # The data dir (%APPDATA%\wchron) is user data and is kept.
-    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "wchron"
-
-    RMDir /r $INSTDIR
-
+    # Program files: only ours, never the whole folder (the user may have picked a shared one).
+    Delete "$INSTDIR\${PRODUCT_EXECUTABLE}"
     Delete "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk"
-    Delete "$DESKTOP\${INFO_PRODUCTNAME}.lnk"
+    Delete "$DESKTOP\${INFO_PRODUCTNAME}.lnk" # created by installers before 0.9.0
+
+    # The login start entry (first run, or Settings > Start with Windows).
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${INFO_PROJECTNAME}"
+
+    # Toast registration written by the Wails notifications service at every start: the
+    # AppUserModelId key holds the per-install activator CLSID (a "{GUID}"), checked before use so
+    # an empty or odd value can never delete Software\Classes\CLSID itself.
+    ReadRegStr $0 HKCU "Software\Classes\AppUserModelId\${INFO_PROJECTNAME}" "CustomActivator"
+    StrLen $1 $0
+    StrCpy $2 $0 1
+    ${If} $1 == 38
+    ${AndIf} $2 == "{"
+        DeleteRegKey HKCU "Software\Classes\CLSID\$0"
+        Delete "$TEMP\${INFO_PROJECTNAME}$0.png" # the toast icon
+    ${EndIf}
+    DeleteRegKey HKCU "Software\Classes\AppUserModelId\${INFO_PROJECTNAME}"
+    DeleteRegKey HKCU "Software\${INFO_PROJECTNAME}\NotificationCategories"
+    DeleteRegKey /ifempty HKCU "Software\${INFO_PROJECTNAME}"
+
+    # User data: config, state, channels (WhatsApp sessions), logs, backups; the WebView2 data;
+    # the processors' temp copies.
+    RMDir /r "$APPDATA\${INFO_PROJECTNAME}"
+    RMDir /r "$APPDATA\${PRODUCT_EXECUTABLE}"
+    RMDir /r "$TEMP\${INFO_PROJECTNAME}"
 
     !insertmacro wails.unassociateFiles
     !insertmacro wails.unassociateCustomProtocols
 
     !insertmacro wails.deleteUninstaller
+    RMDir "$INSTDIR" # only if empty
 SectionEnd
