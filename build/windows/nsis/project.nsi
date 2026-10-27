@@ -141,8 +141,9 @@ Section
 
     !insertmacro wails.files
 
-    # Start menu only: wchron lives in the tray and starts at login, so no desktop shortcut.
+    # Start menu and desktop shortcuts (the desktop one was asked for by the user).
     CreateShortcut "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
+    CreateShortcut "$DESKTOP\${INFO_PRODUCTNAME}.lnk" "$INSTDIR\${PRODUCT_EXECUTABLE}"
 
     !insertmacro wails.associateFiles
     !insertmacro wails.associateCustomProtocols
@@ -157,7 +158,7 @@ Section "uninstall"
     # Program files: only ours, never the whole folder (the user may have picked a shared one).
     Delete "$INSTDIR\${PRODUCT_EXECUTABLE}"
     Delete "$SMPROGRAMS\${INFO_PRODUCTNAME}.lnk"
-    Delete "$DESKTOP\${INFO_PRODUCTNAME}.lnk" # created by installers before 0.9.0
+    Delete "$DESKTOP\${INFO_PRODUCTNAME}.lnk"
 
     # The login start entry (first run, or Settings > Start with Windows).
     DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${INFO_PROJECTNAME}"

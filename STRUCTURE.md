@@ -59,7 +59,7 @@ wchron/
 ├── build/              Wails build assets (m1): config.yml, Taskfile.yml (frontend, bindings), appicon.png
 │                       (1024 px logo), windows/ (Taskfile.yml, icon.ico, wails.exe.manifest, info.json, nsis/
 │                       per-user installer). icon.ico and appicon.png are written by `make icons`;
-│                       (m9) windows/nsis/project.nsi: Start menu shortcut, closes the app before (un)install,
+│                       (m9) windows/nsis/project.nsi: Start menu and desktop shortcuts, closes the app before (un)install,
 │                       uninstall removes all data + Run value + toast registration, final page with the
 │                       WhatsApp note; nsis_test.go: only the uninstall section deletes (upgrades keep data)
 ├── scripts/            set-version.mjs (m1)

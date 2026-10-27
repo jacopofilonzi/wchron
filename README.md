@@ -33,7 +33,7 @@ linked like WhatsApp Web. You can connect several accounts (channels), also of t
 2. Run it. The installer is not signed, so Windows SmartScreen may say "Windows protected your PC": click
    **More info**, then **Run anyway**.
 3. It installs for the current user only (`%LOCALAPPDATA%\Programs\wchron`), without administrator rights,
-   and adds wchron to the Start menu. If wchron is running, the installer asks to close it first.
+   and adds wchron to the Start menu and the desktop. If wchron is running, the installer asks to close it first.
 
 ### First start
 
@@ -348,8 +348,7 @@ Installing a new version never deletes your data. Before starting a new version,
 
 Read this before installing a new version: anything you need to do first is listed here, newest first.
 
-- **0.9.0:** nothing to do. Installers before 0.9.0 created a desktop shortcut; new installs don't, and an
-  existing one is left as it is.
+- **0.9.0:** nothing to do.
 
 ## Your data
 
